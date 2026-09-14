@@ -1,0 +1,4 @@
+recordings/*.jsonl
+workspace/.worktrees/
+node_modules/
+.DS_Store

@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Room</title>
+<style>
+  :root {
+    --bg: #0F1319; --panel: #161C25; --panel-2: #1C2430; --line: #29313D; --ink: #E8EBF0; --ink-2: #AEB6C2; --ink-3: #7F8997;
+    --accent: #8FA6FF; --ok: #6CC48E; --warn: #D9B44A; --bad: #E8905F; --never: #E06C6C;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  header .quota { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; }
+  header .quota b { color: var(--ink-2); font-weight: 500; }
+  main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 0; height: calc(100vh - 49px); }
+  section { overflow: auto; border-right: 1px solid var(--line); }
+  section:last-child { border-right: 0; }
+  h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0; padding: 14px 16px 8px; }
+
+  /* sessions */
+  .session { margin: 0 12px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; }
+  .session .row { display: flex; align-items: center; gap: 8px; }
+  .session .name { font-weight: 600; }
+  .pill { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--ink-2); }
+  .pill.working { color: var(--accent); border-color: var(--accent); }
+  .pill.waiting { color: var(--warn); border-color: var(--warn); background: rgba(217,180,74,.08); }
+  .pill.idle { color: var(--ok); border-color: var(--ok); }
+  .pill.exited, .pill.starting { color: var(--ink-3); }
+  .session .last { color: var(--ink-2); font-size: 13px; max-height: 3.2em; overflow: hidden; }
+  .session .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: flex; gap: 10px; flex-wrap: wrap; }
+  .session .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .session input { flex: 1; min-width: 0; }
+  button { font: inherit; font-size: 12.5px; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--ink-3); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.allow { border-color: var(--ok); color: var(--ok); }
+  button.deny { border-color: var(--bad); color: var(--bad); }
+  button.ghost { color: var(--ink-2); }
+  input, textarea { font: inherit; font-size: 13px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+  textarea { width: 100%; resize: vertical; min-height: 60px; }
+  form.new { margin: 0 12px 12px; display: grid; gap: 6px; }
+
+  /* approvals */
+  .empty { color: var(--ink-3); padding: 24px 16px; }
+  .ask { margin: 0 16px 12px; background: var(--panel); border: 1px solid var(--warn); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
+  .ask .head { display: flex; align-items: baseline; gap: 10px; }
+  .ask .tool { font-weight: 600; }
+  .ask .why { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+  .ask .wait { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--warn); }
+  .ask pre { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
+  .ask .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ask .blast { font-size: 12px; color: var(--ink-2); }
+  .rules { margin: 0 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .rules span { display: inline-block; margin: 0 8px 4px 0; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; }
+
+  /* log */
+  .log { padding: 0 12px 16px; display: grid; gap: 4px; font-family: var(--mono); font-size: 11.5px; }
+  .ev { display: grid; grid-template-columns: 52px 74px 1fr; gap: 8px; padding: 3px 4px; border-radius: 3px; color: var(--ink-2); }
+  .ev .t { color: var(--ink-3); }
+  .ev .k { color: var(--ink-3); }
+  .ev.decision .k { color: var(--ok); } .ev.decision.deny .k { color: var(--bad); }
+  .ev.ask .k { color: var(--warn); }
+  .ev.tool_use .k { color: var(--accent); }
+  .ev.text .k { color: var(--ink); }
+  .ev.result { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
+  .ev.result .k { color: var(--ok); }
+  .ev.stderr .k, .ev.api_error .k, .ev.checkpoint_error .k { color: var(--never); }
+  .ev .v { white-space: pre-wrap; word-break: break-word; max-height: 6.5em; overflow: hidden; }
+  @media (prefers-reduced-motion: no-preference) { .ask { animation: in .18s ease-out; } @keyframes in { from { transform: translateY(-4px); opacity: 0; } } }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; height: auto; } section { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Control Room</h1>
+  <span class="pill" id="conn">connecting</span>
+  <div class="quota" id="quota"></div>
+</header>
+<main>
+  <section>
+    <h2>Sessions</h2>
+    <form class="new" id="newForm">
+      <input name="name" placeholder="name (e.g. docs)" required>
+      <textarea name="prompt" placeholder="What should this agent do in the workspace?" required></textarea>
+      <button type="submit">Start agent</button>
+    </form>
+    <div id="sessions"></div>
+  </section>
+  <section>
+    <h2>Needs you</h2>
+    <div id="asks"><div class="empty">Nothing waiting. Agents on the "do and log" tier run without asking.</div></div>
+    <h2>Rules learned this run</h2>
+    <div class="rules" id="rules"><span>none yet</span></div>
+  </section>
+  <section>
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+<script>
+  const S = { sessions: new Map(), rules: {}, defaults: {} };
+  const $ = (id) => document.getElementById(id);
+  const fmtT = (ms) => new Date(ms).toLocaleTimeString([], { hour12: false });
+  const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const post = (p, b) => fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+
+  function prettyInput(tool, input) {
+    if (!input) return '';
+    if (tool === 'Bash') return input.command + (input.description ? `\n# ${input.description}` : '');
+    if (tool === 'Edit') return `${input.file_path}\n--- old\n${input.old_string}\n+++ new\n${input.new_string}`;
+    if (tool === 'Write') return `${input.file_path}\n${(input.content || '').slice(0, 800)}`;
+    if (tool === 'Read' || tool === 'Glob' || tool === 'Grep') return JSON.stringify(input);
+    return JSON.stringify(input, null, 2);
+  }
+  function blast(tool, input) {
+    if (tool === 'Bash') return 'Runs a shell command inside this agent\'s worktree. Reversible unless it touches the network or files outside it.';
+    if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') return 'Changes a file in the worktree. Reversible with Undo (git).';
+    if (tool === 'WebFetch') return 'Reads an external URL. Content it returns may try to instruct the agent.';
+    if (tool === 'Task') return 'Spawns a subagent with its own tool calls, each gated here.';
+    return 'Default tier for this tool is "ask".';
+  }
+
+  function renderSessions() {
+    const el = $('sessions'); el.innerHTML = '';
+    for (const s of S.sessions.values()) {
+      const d = document.createElement('div'); d.className = 'session';
+      const u = s.usage ? `in ${s.usage.in ?? 0} · cache ${s.usage.cacheRead ?? 0} · out ${s.usage.out ?? 0}` : '';
+      d.innerHTML = `
+        <div class="row"><span class="name">${esc(s.name)}</span><span class="pill ${s.state}">${s.state}</span>${s.currentTool ? `<span class="pill">${esc(s.currentTool)}</span>` : ''}</div>
+        <div class="last">${esc(s.lastText || '')}</div>
+        <div class="meta"><span>turns ${s.turns || 0}</span><span>${esc(s.branch || '')}</span>${u ? `<span>${u}</span>` : ''}</div>
+        <div class="actions">
+          <input placeholder="follow-up message" data-msg="${s.id}">
+          <button data-send="${s.id}">Send</button>
+          <button class="ghost" data-undo="${s.id}" title="git reset --hard HEAD~1 in this worktree">Undo turn</button>
+          <button class="ghost" data-stop="${s.id}">Stop</button>
+        </div>`;
+      el.appendChild(d);
+    }
+    if (!S.sessions.size) el.innerHTML = '<div class="empty">No agents yet. Start one above; it runs on your Claude subscription in its own git worktree.</div>';
+  }
+
+  function renderAsks() {
+    const el = $('asks'); el.innerHTML = '';
+    const asks = [];
+    for (const s of S.sessions.values()) for (const p of s.pending || []) asks.push({ ...p, sname: s.name });
+    // triage: by blast radius first (Bash/WebFetch/Task before edits), then by waiting time
+    const rank = (p) => (p.tool === 'Bash' || p.tool === 'WebFetch' || p.tool === 'Task') ? 0 : 1;
+    asks.sort((a, b) => rank(a) - rank(b) || a.at - b.at);
+    if (!asks.length) { el.innerHTML = '<div class="empty">Nothing waiting. Agents on the "do and log" tier run without asking.</div>'; return; }
+    for (const p of asks) {
+      const d = document.createElement('div'); d.className = 'ask';
+      d.innerHTML = `
+        <div class="head"><span class="tool">${esc(p.tool)}</span><span class="why">${esc(p.sname)} · ${esc(p.reason)} · rule key ${esc(p.key)}</span><span class="wait" data-wait="${p.at}"></span></div>
+        <pre>${esc(prettyInput(p.tool, p.input))}</pre>
+        <div class="blast">${esc(blast(p.tool, p.input))}</div>
+        <div class="btns">
+          <button class="allow" data-decide="allow" data-scope="once">Allow once</button>
+          <button class="allow" data-decide="allow" data-scope="always">Allow always (${esc(p.key)})</button>
+          <button class="deny" data-decide="deny" data-scope="once">Deny</button>
+          <button class="deny" data-decide="deny" data-scope="always">Never (${esc(p.key)})</button>
+        </div>`;
+      d.querySelectorAll('[data-decide]').forEach((b) => b.onclick = () => post('/decide', { session: p.session, id: p.id, decision: b.dataset.decide, scope: b.dataset.scope }));
+      el.appendChild(d);
+    }
+  }
+  function renderRules() {
+    const el = $('rules');
+    const entries = Object.entries(S.rules);
+    el.innerHTML = entries.length ? entries.map(([k, v]) => `<span>${esc(k)} → ${esc(v)}</span>`).join('') : '<span>none yet</span>';
+  }
+  function renderQuota() {
+    let w = null;
+    for (const s of S.sessions.values()) if (s.rateLimit) w = s.rateLimit;
+    if (!w) { $('quota').textContent = ''; return; }
+    const pct = (x) => Math.round((x?.utilization ?? 0) * 100) + '%';
+    $('quota').innerHTML = `<span>5-hour <b>${pct(w.five_hour)}</b></span><span>7-day <b>${pct(w.seven_day)}</b></span>`;
+  }
+  function logEvent(ev) {
+    if (['session-state', 'snapshot', 'rules', 'rate_limit', 'hook', 'post_tool'].includes(ev.type)) return;
+    const s = S.sessions.get(ev.session);
+    const d = document.createElement('div');
+    d.className = `ev ${ev.type} ${ev.decision || ''}`;
+    let v = '';
+    switch (ev.type) {
+      case 'ask': v = `${ev.tool} ${prettyInput(ev.tool, ev.input).split('\n')[0]}`; break;
+      case 'decision': v = `${ev.decision} · ${ev.tool} · ${ev.why}${ev.waitedMs ? ` · waited ${(ev.waitedMs / 1000).toFixed(1)}s` : ''}`; break;
+      case 'tool_use': v = `${ev.tool} ${prettyInput(ev.tool, ev.input).split('\n')[0]}`; break;
+      case 'tool_result': v = (ev.is_error ? 'ERROR ' : '') + ev.content; break;
+      case 'text': v = ev.text; break;
+      case 'prompt': v = ev.text; break;
+      case 'result': v = `${ev.subtype} · ${ev.num_turns} turns · ${(ev.duration_ms / 1000).toFixed(0)}s · est $${(ev.cost_usd ?? 0).toFixed(2)} · denials ${ev.denials?.length ?? 0}\n${ev.text}`; break;
+      case 'checkpoint': v = `${ev.sha} ${ev.msg}`; break;
+      case 'undo': v = `${ev.from} → ${ev.to}`; break;
+      case 'init': v = `model ${ev.model} · auth ${ev.apiKeySource}`; break;
+      case 'session': v = `${ev.subtype} ${ev.name || ''} ${ev.branch || ''} ${ev.code ?? ''}`; break;
+      default: v = ev.text || ev.detail || ev.error || JSON.stringify(ev).slice(0, 300);
+    }
+    d.innerHTML = `<span class="t">${fmtT(ev.at)}</span><span class="k">${esc(s ? s.name : '')} ${esc(ev.type)}</span><span class="v">${esc(v)}</span>`;
+    const log = $('log');
+    log.appendChild(d);
+    while (log.children.length > 400) log.removeChild(log.firstChild);
+    log.parentElement.scrollTop = log.parentElement.scrollHeight;
+  }
+
+  function upsert(ev) {
+    let s = S.sessions.get(ev.session);
+    if (!s) { s = { id: ev.session, name: ev.name || 'agent', pending: [], turns: 0 }; S.sessions.set(ev.session, s); }
+    return s;
+  }
+  function handle(ev) {
+    if (ev.type === 'snapshot') {
+      S.sessions.clear();
+      for (const s of ev.sessions) S.sessions.set(s.id, s);
+      S.rules = ev.rules; S.defaults = ev.defaults;
+      renderSessions(); renderAsks(); renderRules(); renderQuota();
+      return;
+    }
+    if (ev.type === 'rules') { S.rules = ev.rules; renderRules(); return; }
+    const s = upsert(ev);
+    if (ev.type === 'session' && ev.subtype === 'created') { s.name = ev.name; s.branch = ev.branch; s.state = 'starting'; s.pending = []; }
+    if (ev.type === 'session-state') { Object.assign(s, { state: ev.state, currentTool: ev.currentTool, turns: ev.turns ?? s.turns, usage: ev.usage ?? s.usage, rateLimit: ev.rateLimit ?? s.rateLimit, lastText: ev.lastText ?? s.lastText }); }
+    if (ev.type === 'ask') { s.pending = [...(s.pending || []).filter((p) => p.id !== ev.id), ev]; s.state = 'waiting'; }
+    if (ev.type === 'decision') { s.pending = (s.pending || []).filter((p) => p.id !== ev.id); }
+    if (ev.type === 'result') { s.turns = (s.turns || 0) + 1; s.state = 'idle'; }
+    if (ev.type === 'session' && ev.subtype === 'exited') { s.state = 'exited'; s.pending = []; }
+    renderSessions(); renderAsks(); renderQuota(); logEvent(ev);
+  }
+
+  function connect() {
+    const es = new EventSource('/events');
+    es.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'pill idle'; };
+    es.onerror = () => { $('conn').textContent = 'reconnecting'; $('conn').className = 'pill waiting'; };
+    es.onmessage = (m) => handle(JSON.parse(m.data));
+  }
+  connect();
+
+  $('newForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const r = await post('/sessions', { name: f.get('name'), prompt: f.get('prompt') });
+    if (r.error) alert(r.error); else e.target.reset();
+  };
+  document.body.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.send) { const i = document.querySelector(`[data-msg="${b.dataset.send}"]`); if (i.value.trim()) { await post('/message', { session: b.dataset.send, text: i.value }); i.value = ''; } }
+    if (b.dataset.stop) await post('/stop', { session: b.dataset.stop });
+    if (b.dataset.undo) { const r = await post('/undo', { session: b.dataset.undo }); if (r.error) alert(r.error); }
+  });
+  setInterval(() => { document.querySelectorAll('[data-wait]').forEach((el) => { el.textContent = `waiting ${Math.round((Date.now() - +el.dataset.wait) / 1000)}s`; }); }, 1000);
+</script>
+</body>
+</html>
