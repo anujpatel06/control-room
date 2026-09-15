@@ -52,6 +52,26 @@ function onPath() {
 }
 
 const fromPackage = /[\\/]node_modules[\\/]/.test(root) || /[\\/]_npx[\\/]/.test(root);
+const viaNpx = /[\\/]_npx[\\/]/.test(root);
+
+// `npx nearly-cli` should be the whole of it. An npx run is a temporary
+// download, so hooks pointing at it would pin a version in a directory npm
+// clears, and no fix would ever reach this repo. Install it properly instead,
+// once, out loud, so the one command someone types actually leaves them with a
+// working tool. --no-install skips it.
+function installGlobally() {
+  if (!viaNpx || onPath() || argv.includes('--no-install') || process.env.NEARLY_NO_INSTALL === '1') return false;
+  process.stdout.write(dim(`  Installing nearly so upgrades reach you… `));
+  const r = spawnSync('npm', ['install', '-g', `nearly-cli@${pkgVersion()}`, '--silent', '--no-fund', '--no-audit'],
+    { encoding: 'utf8', timeout: 180_000 });
+  if (r.status === 0 && onPath()) { console.log('done'); return true; }
+  console.log(dim('skipped'));
+  console.log(dim('    Running from npx instead. Upgrades will not reach this repo automatically;'));
+  console.log(dim('    npm install -g nearly-cli when you want that.'));
+  return false;
+}
+if (!off) installGlobally();
+
 const installed = onPath();
 const hookCmd = (ev) => installed
   ? `nearly hook ${ev}`

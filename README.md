@@ -31,31 +31,25 @@ Gating, recording and the record itself work on macOS, Linux and Windows. **Spok
 One command, in the repo you want recorded.
 
 ```bash
-cd ~/code/my-app
-nearly
+npx nearly-cli
 ```
 
 ```
 ✓ Nearly is on for my-app
 
   · every Claude Code session here is gated and recorded
+  · upgrades reach this repo automatically
   · the record is offered when you push
-  · records publish to https://you.github.io/nearly/records
 
   Now just work. Requests that need you appear at http://127.0.0.1:47653
   Nothing to leave running. Turn it off again with --off.
 ```
 
-It installs the Claude Code hooks and the git pre-push hook, and works out where records publish by reading the Nearly's own remote. Nothing to configure. `nearly off` removes all of it.
+That installs Nearly, turns it on for this repo, and works out where records go.
+Nothing to configure, no server to start, and `nearly off` removes all of it.
 
-**To get that command,** until this is on npm:
-
-```bash
-git clone https://github.com/anujpatel06/nearly ~/nearly
-npm link --prefix ~/nearly
-```
-
-No dependencies, so the link is instant. Once published it becomes `npx nearly-cli` with nothing to clone at all.
+Run it again in any other repo you want recorded. After the first time the
+command is just `nearly`.
 
 ### Upgrading
 
@@ -95,7 +89,7 @@ Nothing about how you work changes. Open the repo in VS Code or a terminal, star
 
 ### For a team
 
-`.claude/settings.local.json` is per-person and stays out of git, which is right while you are trying it. To turn it on for everyone, move the same hooks into `.claude/settings.json` and commit that file. Once this is on npm the hooks invoke `npx nearly-cli`, so a teammate who clones the repo needs nothing installed beyond Node.
+`.claude/settings.local.json` is per-person and stays out of git, which is right while you are trying it. To turn it on for everyone, move the same hooks into `.claude/settings.json` and commit that file. The hooks invoke `nearly` by name, so a teammate who clones the repo runs `npx nearly-cli` once and is set up.
 
 ## Why the gate is not the point
 
