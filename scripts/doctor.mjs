@@ -73,8 +73,20 @@ if (!health) {
   let mine = root;
   try { mine = realpathSync(root); } catch { /* compare literally */ }
   const same = health.root === mine;
-  say(same ? true : false, 'server', same ? `v${health.version}` : `a different install is answering: ${health.root || 'an older build'}`,
-    'run `nearly` here — it closes an older server that is holding the port');
+  let ours = null;
+  try { ours = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version; } catch { /* unknown */ }
+  if (same) {
+    say(true, 'server', `v${health.version}`);
+  } else if (health.version && health.version === ours) {
+    // Running this through npx gives a throwaway directory every time, so the
+    // paths differ even when the build is identical. Saying "a different
+    // install" there is true and useless; the version is what anyone cares
+    // about, and a matching one is holding nothing back.
+    say(null, 'server', `v${health.version} from another copy of the same version — nothing stale about it`);
+  } else {
+    say(false, 'server', `an older build is answering${health.version ? ` (v${health.version})` : ''}: ${health.root || 'it does not say where it lives'}`,
+      'run `nearly` here — it closes the older server holding the port');
+  }
 }
 
 // 4 — recordings for this branch, matched the way the record builder matches
