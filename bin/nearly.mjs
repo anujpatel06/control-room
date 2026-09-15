@@ -34,6 +34,12 @@ switch (cmd) {
   case 'off': case 'detach':
     return run(s('attach.mjs'), [...rest, '--off']);
 
+  // Used by attach to confirm a `nearly` on PATH really is this tool before
+  // pointing hooks at a bare command name.
+  case '--which':
+    console.log(root);
+    return process.exit(0);
+
   case 'hook':
     return run(s('hook.mjs'), rest);
 

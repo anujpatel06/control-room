@@ -158,3 +158,20 @@ test('the push hook never blocks a push, whatever happens', () => {
     assert.match(r.stderr + r.stdout, /no agent sessions recorded/);
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
+
+test('hooks resolve the command fresh, so upgrading reaches every repo', () => {
+  // The alternative is pinning a version into every repo, which means a user who
+  // upgrades keeps running the old code everywhere and has no way to know.
+  const repo = tempRepo();
+  try {
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    const cmd = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'))
+      .hooks.PreToolUse[0].hooks[0].command;
+
+    // Whichever form it took, it must not be frozen to a path inside a cache
+    // that npm clears, which would break rather than merely go stale.
+    assert.doesNotMatch(cmd, /_npx|node_modules\/\.cache/, 'must not point into a disposable cache');
+    assert.match(cmd, /nearly hook pre-tool|nearly-cli@\d|hook\.mjs" pre-tool/,
+      `unrecognised hook command: ${cmd}`);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});

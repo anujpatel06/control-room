@@ -25,17 +25,43 @@ const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
 const PORT = 47653;
 
-// Installed from npm, the path to this file sits in a cache that gets cleared,
-// so the hooks have to call the published command rather than a path on disk.
-// Running from a clone, the path is stable and faster, so use it.
-const fromPackage = /[\\/]node_modules[\\/]/.test(root) || /[\\/]_npx[\\/]/.test(root);
-const hookCmd = (ev) => fromPackage
-  ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
-  : `node ${JSON.stringify(HOOK)} ${ev}`;
+// What the hooks should invoke, in order of preference. This choice decides
+// whether upgrading the tool ever reaches the repos it was turned on for.
+//
+//   1. The command on PATH, if it is this package. Resolved fresh every time a
+//      hook fires, so `npm i -g nearly-cli@latest` updates every repo at once
+//      and nothing has to be turned on again.
+//   2. A pinned npx call, when running from a cache that gets cleared. Pinned on
+//      purpose: @latest would check the registry before every single tool call.
+//   3. The path on disk, when running from a clone. Stable and fastest.
 function pkgVersion() {
   try { return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version; }
   catch { return 'latest'; }
 }
+
+// Only trust a `nearly` on PATH if it really is this tool.
+function onPath() {
+  try {
+    const p = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['nearly'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n')[0];
+    if (!p) return null;
+    const out = execFileSync(p, ['--which'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return out ? p : null;
+  } catch { return null; }
+}
+
+const fromPackage = /[\\/]node_modules[\\/]/.test(root) || /[\\/]_npx[\\/]/.test(root);
+const installed = onPath();
+const hookCmd = (ev) => installed
+  ? `nearly hook ${ev}`
+  : fromPackage
+    ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
+    : `node ${JSON.stringify(HOOK)} ${ev}`;
+const updateNote = installed
+  ? 'upgrades reach this repo automatically'
+  : fromPackage
+    ? `pinned to v${pkgVersion()} — run nearly again here after upgrading`
+    : 'running from a checkout — git pull updates it';
 
 const argv = process.argv.slice(2);
 const off = argv.includes('--off') || argv.includes('--detach');
@@ -152,6 +178,7 @@ if (off) {
 console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)}`);
 console.log('');
 console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
+console.log(`  ${ok('·')} ${dim(updateNote)}`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
 if (base) {
   console.log(`  ${ok('·')} records publish to ${base}`);

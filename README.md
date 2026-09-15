@@ -57,6 +57,24 @@ npm link --prefix ~/nearly
 
 No dependencies, so the link is instant. Once published it becomes `npx nearly-cli` with nothing to clone at all.
 
+### Upgrading
+
+```bash
+npm install -g nearly-cli@latest
+```
+
+That is the whole upgrade. Hooks invoke `nearly` by name and resolve it fresh
+each time they fire, so every repo you turned it on for picks up the new version
+at once and nothing has to be turned on again.
+
+Two exceptions, and `nearly` says which one applies when you turn it on:
+
+- Run through `npx` with nothing installed globally, and the hooks are pinned to
+  the version that wrote them, on purpose: resolving `@latest` before every tool
+  call would put a registry lookup in front of every action an agent takes. Run
+  `nearly` again in the repo after upgrading to move it forward.
+- Run from a clone, and `git pull` is the upgrade.
+
 **There is no server to start.** The hooks start it the first time they need it, in about a second, and it stays up. If it cannot start, Claude Code falls back to its own permission prompts and your session continues. Nothing to remember and nothing to break.
 
 ## Then work normally
