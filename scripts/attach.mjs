@@ -92,7 +92,9 @@ const hookCmd = (ev) => installed
   : fromPackage
     ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
     : `node ${JSON.stringify(HOOK)} ${ev}`;
-const updateNote = installed
+// A function, not a value: the install below changes the answer, and computing
+// it early told a fresh install it was pinned when it was not.
+const updateNote = () => installed
   ? 'upgrades reach this repo automatically'
   : fromPackage
     ? `pinned to v${pkgVersion()} — run nearly again here after upgrading`
@@ -217,7 +219,7 @@ if (off) {
 console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)}`);
 console.log('');
 console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
-console.log(`  ${ok('·')} ${dim(updateNote)}`);
+console.log(`  ${ok('·')} ${dim(updateNote())}`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
 if (base) {
   console.log(`  ${ok('·')} records publish to ${base}`);
