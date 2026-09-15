@@ -70,9 +70,7 @@ function installGlobally() {
   console.log(dim('    npm install -g nearly-cli when you want that.'));
   return false;
 }
-if (!off) installGlobally();
-
-const installed = onPath();
+let installed = onPath();
 const hookCmd = (ev) => installed
   ? `nearly hook ${ev}`
   : fromPackage
@@ -100,6 +98,10 @@ if (!existsSync(join(repo, '.git'))) {
   console.error('Run this inside the repo you want recorded, or pass its path.');
   process.exit(1);
 }
+
+// Do this before the hooks are written, so they can point at the installed
+// command rather than a temporary npx download.
+if (!off && installGlobally()) installed = onPath();
 
 // ---------------------------------------------------------------------------
 // Claude Code hooks
