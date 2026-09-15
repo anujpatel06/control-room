@@ -18,9 +18,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const recordingsDir = join(root, 'recordings');
+const recordingsDir = process.env.CONTROL_ROOM_RECORDINGS || join(root, 'recordings');
 const templatePath = join(root, 'ui', 'recap.template.html');
-const outDir = join(root, 'ui', 'recaps');
+const outDir = process.env.CONTROL_ROOM_OUT || join(root, 'ui', 'recaps');
 
 // ---------------------------------------------------------------------------
 // args
@@ -610,10 +610,11 @@ if (!noAudio) {
 sb.totalS = sb.scenes.reduce((n, s) => n + s.durS, 0);
 
 mkdirSync(outDir, { recursive: true });
-mkdirSync(join(root, 'recaps'), { recursive: true });
+const storyDirOut = process.env.CONTROL_ROOM_STORY || join(root, 'recaps');
+mkdirSync(storyDirOut, { recursive: true });
 const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 const slug = BRANCH ? `${safe(sb.name)}--${safe(BRANCH)}` : `${sb.name}-${sb.id.slice(0, 4)}`;
-const jsonPath = join(root, 'recaps', `${slug}.json`);
+const jsonPath = join(storyDirOut, `${slug}.json`);
 writeFileSync(jsonPath, JSON.stringify({ ...sb, scenes: sb.scenes.map(({ audio, ...s }) => s) }, null, 2));
 
 const html = readFileSync(templatePath, 'utf8')

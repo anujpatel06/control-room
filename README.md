@@ -198,6 +198,35 @@ That copies every built recap into `docs/recaps/` and writes `docs/index.html`, 
 
 Claude Code treats a hook that times out, errors, or returns anything other than `200` with JSON as a non-blocking error and lets the tool call proceed. So this server always answers with JSON, holds "ask" calls for at most `ASK_TIMEOUT_MS`, and denies when nobody decides. The hook's own timeout is set longer than that.
 
+## Tests
+
+```bash
+npm test
+```
+
+41 tests, no dependencies, about 30 seconds. They run on a fresh clone with no
+agent, no network and no Claude subscription, because the fixtures are the two
+recorded sessions committed in `recordings/demo`.
+
+What they hold the project to:
+
+- **The consent gradient.** That destructive commands are denied without asking,
+  that a never pattern still fires when the command is buried in a chain, that an
+  unclassified tool is held rather than allowed, and that "always" for `git status`
+  can never become permission for `git push`.
+- **The hook contract.** The exact JSON Claude Code reads, for every tier. That an
+  ask really is held until somebody answers, and that **nobody answering means
+  denied**, which is the assumption the whole design rests on.
+- **The record's central claim.** That every figure on the page matches the
+  recording: the refusal count, who refused each one, every instruction verbatim
+  and in order. The test reads the recordings itself rather than trusting the
+  builder's own summary.
+- **The failure paths**, which are the ones that lose you a user silently. That a
+  hook whose server cannot start stays quiet and exits 0 rather than wedging a
+  session. That two hooks racing for the port do not crash. That turning it on
+  twice installs nothing twice, turning it off removes everything, and neither
+  touches settings somebody else put there.
+
 ## Study
 
 The claim this project makes is testable: a reviewer who sees the session record catches something a reviewer who sees only the diff misses. [`STUDY.md`](STUDY.md) is the protocol — two seeded-error tasks, three participants, and rules for reporting the result honestly including when it is negative.

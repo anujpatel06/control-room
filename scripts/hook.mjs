@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HOST = '127.0.0.1';
-const PORT = 47653;
+const PORT = Number(process.env.CONTROL_ROOM_PORT || 47653);
 const BASE = `http://${HOST}:${PORT}`;
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 

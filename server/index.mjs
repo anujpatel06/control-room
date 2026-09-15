@@ -10,16 +10,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_TIER, ruleKey, classify as classifyWith } from './policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 47653;
+const PORT = Number(process.env.CONTROL_ROOM_PORT || 47653);
 const HOST = '127.0.0.1';
 const WORKSPACE = path.join(ROOT, 'workspace');
 const WORKTREES = path.join(WORKSPACE, '.worktrees');
 const RECORDINGS = path.join(ROOT, 'recordings');
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
-const ASK_TIMEOUT_MS = 120_000;         // UI must answer before this; then we fail CLOSED (deny)
+const ASK_TIMEOUT_MS = Number(process.env.CONTROL_ROOM_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
 const HOOK_TIMEOUT_S = 180;             // Claude Code's own hook timeout; must be > ASK_TIMEOUT
 const MODEL = 'sonnet';
 const MAX_TURNS = '12';
@@ -28,40 +29,10 @@ fs.mkdirSync(RECORDINGS, { recursive: true });
 fs.mkdirSync(WORKTREES, { recursive: true });
 
 // ---------------------------------------------------------------------------
-// Consent gradient (policy). Tiers: never | ask | log | suggest
-// never  -> deny, no prompt, logged
-// ask    -> hold the call until a human decides (or time out to deny)
-// log    -> allow, record a receipt
-// suggest-> not enforced at the hook level in this spike (it is a prompt-side behaviour)
+// Consent gradient. The rules learned during this run: "allow always" and
+// "never" write here, keyed by ruleKey().
 // ---------------------------------------------------------------------------
-const NEVER_PATTERNS = [/\brm\s+-rf?\b/, /\bgit\s+push\b/, /\bsudo\b/, /\.env\b/, /curl[^|]*\|\s*(ba)?sh/, /\bchmod\s+777\b/];
-const DEFAULT_TIER = {
-  Read: 'log', Glob: 'log', Grep: 'log', LS: 'log', WebSearch: 'log', TodoWrite: 'log',
-  WebFetch: 'ask', Bash: 'ask', Edit: 'ask', Write: 'ask', MultiEdit: 'ask', NotebookEdit: 'ask', Task: 'ask',
-};
-const rules = new Map(); // learned this run via "allow always" / "deny always": ruleKey -> tier
-
-function ruleKey(hook) {
-  const t = hook.tool_name;
-  if (t === 'Bash') {
-    const first = String(hook.tool_input?.command || '').trim().split(/\s+/)[0] || '?';
-    return `Bash:${first}`;
-  }
-  if (t === 'Edit' || t === 'Write' || t === 'MultiEdit') {
-    const p = hook.tool_input?.file_path || '';
-    return `${t}:${path.extname(p) || '(no ext)'}`;
-  }
-  return t;
-}
-
-function classify(hook) {
-  const t = hook.tool_name;
-  const cmd = String(hook.tool_input?.command || '');
-  if (t === 'Bash' && NEVER_PATTERNS.some((r) => r.test(cmd))) return { tier: 'never', reason: 'matches a never rule' };
-  const key = ruleKey(hook);
-  if (rules.has(key)) return { tier: rules.get(key), reason: `rule ${key}` };
-  return { tier: DEFAULT_TIER[t] ?? 'ask', reason: `default for ${t}` };
-}
+const rules = new Map();
 
 // ---------------------------------------------------------------------------
 // Sessions
@@ -387,7 +358,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (ev === 'pre-tool') {
-      const { tier, reason } = classify(hook);
+      const { tier, reason } = classifyWith(hook, rules);
       const id = hook.tool_use_id || randomUUID();
       const respond = (decision, why) => hookOk(res, {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `control room: ${why}` },
