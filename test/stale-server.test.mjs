@@ -127,48 +127,89 @@ test('a server is never taken away from someone mid-decision', async () => {
   await held;
 });
 
-// A build from before any of this existed: it answers /health without saying
-// where it lives, and has no way to be asked to stand down. A hook must not
-// break over it; attach must say plainly what is wrong and how to end it.
-test('an older server that cannot be asked to stop is explained, not ignored', async () => {
-  const { createServer } = await import('node:http');
-  const { mkdtempSync: mkd } = await import('node:fs');
-  const port = 49400 + Math.floor(Math.random() * 90);
-  const old = createServer((req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ ok: true, sessions: 0 }));   // no root, no version
-    }
-    res.writeHead(404).end();                                      // no /exit
+// The case almost everybody is actually in: a server from a build that has no
+// /exit, because that is what is already installed. Telling them to run taskkill
+// fixes it for whoever reads the message. It has to happen on its own.
+//
+// The stand-in answers /health and /state exactly as 0.1.7 did, and runs as its
+// own process — which is the only way this means anything, because finding the
+// process holding a port is most of what is being tested, and reclaim refuses
+// to signal itself.
+const OLD_SERVER = `
+import http from 'node:http';
+const [, , port, sessions] = process.argv;
+const n = Number(sessions || 0);
+http.createServer((q, s) => {
+  const j = (o) => { s.writeHead(200, { 'content-type': 'application/json' }); s.end(JSON.stringify(o)); };
+  if (q.url === '/health') return j({ ok: true, sessions: n });
+  if (q.url === '/state') return j({
+    sessions: n ? [{ id: 'x', pending: [{ id: 'p1' }] }] : [],
+    rules: {}, defaults: { Bash: 'ask', Read: 'log' }, askTimeoutMs: 120000,
   });
-  await new Promise((r) => old.listen(port, '127.0.0.1', r));
+  s.writeHead(404).end();                      // no /exit, like every build before 0.1.8
+}).listen(Number(port), '127.0.0.1', () => console.log('up'));
+`;
 
-  const repo = mkd(join(tmpdir(), 'nearly-oldsrv-'));
+async function oldServer(port, { sessions = 0 } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'nearly-old-'));
+  const file = join(dir, 'old-server.mjs');
+  writeFileSync(file, OLD_SERVER);
+  const proc = spawn(process.execPath, [file, String(port), String(sessions)], { stdio: ['ignore', 'pipe', 'ignore'] });
+  await new Promise((r) => proc.stdout.once('data', r));
+  return { proc, dir, stop: () => { try { proc.kill('SIGKILL'); } catch { /* gone */ } scrub(dir); } };
+}
+
+test('an idle server too old to be asked is closed anyway', async () => {
+  const port = 49400 + Math.floor(Math.random() * 90);
+  const old = await oldServer(port);
   try {
-    spawn(process.execPath, ['-e', ''], {});   // keep imports honest
-    const { execFileSync } = await import('node:child_process');
-    execFileSync('git', ['init', '-q'], { cwd: repo });
-    writeFileSync(join(repo, 'a.txt'), 'x');
-    execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@x', 'commit', '-qm', 'i'], { cwd: repo });
+    const { reclaim, identify } = await import('../server/reclaim.mjs');
+    const base = `http://127.0.0.1:${port}`;
+    assert.ok(await identify(base), 'the stand-in did not answer like a Nearly server');
 
-    const r = spawn(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], {
-      env: { ...process.env, NEARLY_PORT: String(port), NEARLY_REPOS: join(repo, 'repos.json'),
-        NEARLY_CONFIG: join(repo, 'config.json'), NEARLY_NO_INSTALL: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const r = await reclaim({ port, base, root });
+    assert.equal(r.outcome, 'ended', 'an old build that cannot be asked must still go');
+    assert.equal(await identify(base), null, 'it is still answering');
+    assert.ok(await waitFor(() => old.proc.exitCode !== null || old.proc.signalCode !== null),
+      'the process outlived the port');
+  } finally { old.stop(); }
+});
+
+test('a server in use is never closed, however old it is', async () => {
+  // Someone is mid-decision behind it. Ending that server hands their held
+  // request back to the agent's own prompt, which is the whole thing this
+  // project exists to prevent — and no amount of staleness is worth it.
+  const port = 49500 + Math.floor(Math.random() * 90);
+  const old = await oldServer(port, { sessions: 1 });
+  let killed = false;
+  try {
+    const { reclaim } = await import('../server/reclaim.mjs');
+    const r = await reclaim({
+      port, base: `http://127.0.0.1:${port}`, root, kill: () => { killed = true; },
     });
-    let out = '';
-    r.stdout.on('data', (d) => (out += d));
-    const code = await new Promise((res) => r.on('close', res));
+    assert.equal(r.outcome, 'busy');
+    assert.equal(killed, false, 'it interrupted somebody');
+    assert.equal(old.proc.exitCode, null, 'it ended a server someone was using');
+  } finally { old.stop(); }
+});
 
-    assert.equal(code, 0, 'a squatting server must not stop you turning Nearly on');
-    const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
-    assert.match(plain, new RegExp(`older Nearly server is holding port ${port}`));
-    assert.match(plain, /answers instead of this one/);
-    assert.match(plain, process.platform === 'win32' ? /taskkill/ : /lsof -ti/,
-      'it must say how to end it, on this platform');
-  } finally {
-    await new Promise((r) => old.close(r));
-    scrub(repo);
-  }
+test('something that is not ours on the port is never touched', async () => {
+  // The rule that makes killing by port defensible: two independent answers
+  // only this server gives. A plain web server on 47653 must be left alone.
+  const { createServer } = await import('node:http');
+  const port = 49600 + Math.floor(Math.random() * 90);
+  const stranger = createServer((q, r) => {
+    r.writeHead(200, { 'content-type': 'application/json' });
+    r.end(JSON.stringify({ ok: true, sessions: 3 }));      // /health-shaped by luck
+  });
+  await new Promise((r) => stranger.listen(port, '127.0.0.1', r));
+  let killed = false;
+  try {
+    const { reclaim, identify } = await import('../server/reclaim.mjs');
+    assert.equal(await identify(`http://127.0.0.1:${port}`), null,
+      'a lookalike /health was taken as proof on its own');
+    const r = await reclaim({ port, base: `http://127.0.0.1:${port}`, root, kill: () => { killed = true; } });
+    assert.equal(r.outcome, 'free');
+    assert.equal(killed, false, 'it killed a process that was not ours');
+  } finally { stranger.closeAllConnections?.(); await new Promise((r) => stranger.close(r)); }
 });

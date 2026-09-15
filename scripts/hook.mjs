@@ -57,32 +57,15 @@ const realRoot = (() => { try { return realpathSync(root); } catch { return root
 // A hook starts the server and the server outlives the run. So after an upgrade
 // — or after a one-off `npx nearly-cli` — the old build keeps the port and keeps
 // answering, from a directory that may not exist any more. Its record pages 404
-// and every fix since is invisible, with nothing anywhere saying why. Reported
-// from a Windows machine where an npx-cache server had been squatting for days.
+// and every fix since is invisible, with nothing anywhere saying why.
 async function up(ms = 400) {
   try {
     const r = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(ms) });
     if (!r.ok) return false;
     const h = await r.json().catch(() => ({}));
-    // No root at all means a build from before this check: stale by definition.
-    if (h.root !== realRoot) return 'stale';
+    if (h.root !== realRoot) return 'stale';   // no root at all means older than this check
     return true;
   } catch { return false; }
-}
-
-// Ask the old one to stand down. It refuses while somebody is mid-decision,
-// which is right: those requests are being held for a human and dropping them
-// would hand each one back to the agent's own prompt.
-async function replace() {
-  try {
-    const r = await fetch(`${BASE}/exit`, { method: 'POST', signal: AbortSignal.timeout(2000) });
-    if (r.status === 409) return false;          // in use; leave it alone
-  } catch { return false; }
-  for (let i = 0; i < 20; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-    if (await up(200) === false) return true;    // port is free
-  }
-  return false;
 }
 
 async function start() {
@@ -99,8 +82,17 @@ async function start() {
 }
 
 let health = await up();
-if (health === 'stale' && await replace()) health = false;   // ours can have the port
-if (health === 'stale') health = true;                       // in use by a human; talk to it anyway
+if (health === 'stale') {
+  // Take the port back rather than run whatever is already there. Nobody reads
+  // a hook's output, so this has to happen without being asked — otherwise the
+  // only people who ever get the fix are the ones who happen to re-run `nearly`
+  // and read the message.
+  const { reclaim } = await import('../server/reclaim.mjs');
+  const { outcome } = await reclaim({ port: PORT, base: BASE, root: realRoot });
+  // 'busy' and 'stuck' both mean it is still there. Talking to an old server
+  // still gates the call, which is better than not gating it.
+  health = (outcome === 'stood-down' || outcome === 'ended' || outcome === 'free') ? false : true;
+}
 if (!health && !(await start())) process.exit(0);            // fail open, silently
 
 // PreToolUse can hold for as long as the server is willing to wait for a human.

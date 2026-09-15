@@ -189,30 +189,12 @@ try {
 // Builds from 0.1.8 stand down when asked. Older ones have no way to be asked,
 // so the honest thing is to name the problem and the exact command.
 async function checkPort() {
-  let h;
-  try {
-    const r = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(700) });
-    if (!r.ok) return null;
-    h = await r.json();
-  } catch { return null; }                       // nothing running: the normal case
-
   let mine = root;
   try { mine = realpathSync(root); } catch { /* compare the literal path */ }
-  if (h.root === mine) return null;              // it is us
-
   try {
-    const r = await fetch(`http://127.0.0.1:${PORT}/exit`, { method: 'POST', signal: AbortSignal.timeout(2000) });
-    if (r.ok) return { replaced: true, from: h.root || 'an older build' };
-    if (r.status === 409) return { busy: true, from: h.root || 'an older build' };
-  } catch { /* fall through to the manual instruction */ }
-
-  return {
-    stuck: true,
-    from: h.root || 'an older build (it does not say where it lives)',
-    how: process.platform === 'win32'
-      ? `netstat -ano | findstr :${PORT}   then   taskkill /PID <pid> /F`
-      : `lsof -ti:${PORT} -sTCP:LISTEN | xargs kill`,
-  };
+    const { reclaim } = await import('../server/reclaim.mjs');
+    return await reclaim({ port: PORT, base: `http://127.0.0.1:${PORT}`, root: mine });
+  } catch { return null; }
 }
 const port = off ? null : await checkPort();
 
@@ -299,20 +281,23 @@ if (base) {
 }
 for (const n of notes) console.log(`  ${dim('·')} ${dim(n)}`);
 
-if (port?.replaced) {
-  console.log(`  ${ok('·')} ${dim('replaced an older Nearly server that was holding the port')}`);
-} else if (port?.busy) {
+if (port?.outcome === 'stood-down' || port?.outcome === 'ended') {
+  const from = port.who?.root || 'an older build';
+  console.log(`  ${ok('·')} ${dim(`closed an older Nearly server that was holding port ${PORT}`)}`);
+  console.log(`    ${dim(from)}`);
+} else if (port?.outcome === 'busy') {
   console.log('');
-  console.log(`  ${bold('Another Nearly server is on this port and someone is deciding something.')}`);
-  console.log(dim(`  Left it alone. Run this again once that request has been answered.`));
-} else if (port?.stuck) {
+  console.log(`  ${bold('Another Nearly server is on this port and is in use.')}`);
+  console.log(dim('  Left it alone. Run this again once it is idle and this build will take over.'));
+} else if (port?.outcome === 'stuck') {
   console.log('');
-  console.log(`  ${bold(`An older Nearly server is holding port ${PORT}.`)}`);
-  console.log(dim(`  It is running from ${port.from},`));
-  console.log(dim('  it cannot be asked to stop, and until it goes it answers instead of this one —'));
-  console.log(dim('  which is why its record pages 404 and why upgrades seem to do nothing.'));
+  console.log(`  ${bold(`An older Nearly server is holding port ${PORT} and would not close.`)}`);
+  console.log(dim('  Until it goes it answers instead of this one, which is why its record pages'));
+  console.log(dim('  404 and why upgrading appears to do nothing.'));
   console.log('');
-  console.log(`  ${dim('Stop it with:')}  ${port.how}`);
+  console.log(`  ${dim('End it with:')}  ${process.platform === 'win32'
+    ? `netstat -ano | findstr :${PORT}   then   taskkill /PID <pid> /F`
+    : `lsof -ti:${PORT} -sTCP:LISTEN | xargs kill`}`);
 }
 
 // An agent you have on this machine but have not used here is worth a word, and

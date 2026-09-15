@@ -328,12 +328,20 @@ A server outlives the run that started it, so one `npx nearly-cli` — or any
 upgrade — can leave the previous build holding the port. It keeps answering,
 from a directory npm has since replaced, which is why its record pages 404 and
 why upgrading appears to do nothing at all. Every server now says which build it
-is and where it lives, and a hook from a different install replaces it before
-doing anything else. It will not do that while somebody is mid-decision: dropping
-a held request would hand it back to the agent's own prompt, which is the one
-outcome this project exists to prevent. Builds older than 0.1.8 cannot be asked
-to stand down, so `nearly` names the problem and gives you the command for your
-platform instead of leaving you to work it out.
+is and where it lives, and a hook from a different install takes the port back
+before doing anything else — without being asked, because nobody reads a hook's
+output, and a fix only the people who happen to re-read a message ever get is
+not a fix.
+
+Builds from 0.1.8 stand down when asked. Older ones have no way to be asked, so
+an idle one is ended outright. Two rules make that defensible. It must prove it
+is ours twice, on `/health` and on `/state` — the second carries the consent
+gradient itself, which nothing else on your machine is going to return by
+chance, so a plain web server that happens to sit on 47653 is never touched. And
+it is never ended while anybody is using it: dropping a held request would hand
+it back to the agent's own prompt, which is the one outcome this project exists
+to prevent. If a server cannot be ended, `nearly` says so and gives you the
+command for your platform rather than leaving you to work it out.
 
 And a server with no sessions that nobody has asked anything of for thirty
 minutes exits on its own. There is nothing to remember to shut down, and nothing
