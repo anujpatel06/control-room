@@ -131,14 +131,16 @@
       const d = document.createElement('div'); d.className = 'session';
       const u = s.usage ? `in ${s.usage.in ?? 0} · cache ${s.usage.cacheRead ?? 0} · out ${s.usage.out ?? 0}` : '';
       d.innerHTML = `
-        <div class="row"><span class="name">${esc(s.name)}</span><span class="pill ${s.state}">${s.state}</span>${s.currentTool ? `<span class="pill">${esc(s.currentTool)}</span>` : ''}</div>
+        <div class="row"><span class="name">${esc(s.name)}</span><span class="pill ${s.state}">${s.state}</span>${s.attached ? '<span class="pill" title="Started by Claude Code in your own repo; gated and recorded here">attached</span>' : ''}${s.currentTool ? `<span class="pill">${esc(s.currentTool)}</span>` : ''}</div>
         <div class="last">${esc(s.lastText || '')}</div>
         <div class="meta"><span>turns ${s.turns || 0}</span><span>${esc(s.branch || '')}</span>${u ? `<span>${u}</span>` : ''}</div>
-        <div class="actions">
+        <div class="actions">${s.attached ? '' : `
           <input placeholder="follow-up message" data-msg="${s.id}">
           <button data-send="${s.id}">Send</button>
-          <button class="ghost" data-undo="${s.id}" title="git reset --hard HEAD~1 in this worktree">Undo turn</button>
-          <button class="ghost" data-stop="${s.id}">Stop</button>
+          <button class="ghost" data-undo="${s.id}" title="git reset --hard HEAD~1 in this worktree">Undo turn</button>`}
+          <button class="ghost" data-stop="${s.id}">${s.attached ? 'Detach' : 'Stop'}</button>
+          <button class="ghost" data-recap="${s.id}" title="Build a narrated recap page from this session's recording">Recap</button>
+          <button class="ghost" data-post="${s.id}" title="Comment the recap on this branch's pull request (gh pr comment)">Post to PR</button>
         </div>`;
       el.appendChild(d);
     }
@@ -197,6 +199,9 @@
       case 'result': v = `${ev.subtype} · ${ev.num_turns} turns · ${(ev.duration_ms / 1000).toFixed(0)}s · est $${(ev.cost_usd ?? 0).toFixed(2)} · denials ${ev.denials?.length ?? 0}\n${ev.text}`; break;
       case 'checkpoint': v = `${ev.sha} ${ev.msg}`; break;
       case 'undo': v = `${ev.from} → ${ev.to}`; break;
+      case 'recap': v = `${ev.href} · ${ev.log}`; break;
+      case 'turn_diff': v = `turn ${ev.turn} · ${(ev.stat || []).length} file(s) changed`; break;
+      case 'recap_error': v = ev.error; break;
       case 'init': v = `model ${ev.model} · auth ${ev.apiKeySource}`; break;
       case 'session': v = `${ev.subtype} ${ev.name || ''} ${ev.branch || ''} ${ev.code ?? ''}`; break;
       default: v = ev.text || ev.detail || ev.error || JSON.stringify(ev).slice(0, 300);
@@ -251,6 +256,19 @@
     if (b.dataset.send) { const i = document.querySelector(`[data-msg="${b.dataset.send}"]`); if (i.value.trim()) { await post('/message', { session: b.dataset.send, text: i.value }); i.value = ''; } }
     if (b.dataset.stop) await post('/stop', { session: b.dataset.stop });
     if (b.dataset.undo) { const r = await post('/undo', { session: b.dataset.undo }); if (r.error) alert(r.error); }
+    if (b.dataset.post) {
+      if (!confirm('Post the recap as a comment on the open pull request for this branch, using your gh login?')) return;
+      b.disabled = true; b.textContent = 'Posting…';
+      const r = await post('/post-recap', { session: b.dataset.post });
+      b.disabled = false; b.textContent = 'Post to PR';
+      alert(r.error ? r.error : `Posted: ${r.url}`);
+    }
+    if (b.dataset.recap) {
+      b.disabled = true; b.textContent = 'Building…';
+      const r = await post('/recap', { session: b.dataset.recap });
+      b.disabled = false; b.textContent = 'Recap';
+      if (r.error) alert(r.error); else window.open(r.href, '_blank');
+    }
   });
   setInterval(() => { document.querySelectorAll('[data-wait]').forEach((el) => { el.textContent = `waiting ${Math.round((Date.now() - +el.dataset.wait) / 1000)}s`; }); }, 1000);
 </script>

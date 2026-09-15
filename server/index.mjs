@@ -86,7 +86,7 @@ function record(sid, ev) {
 
 function summary(s) {
   return {
-    id: s.id, name: s.name, state: s.state, worktree: s.worktree, branch: s.branch,
+    id: s.id, name: s.name, state: s.state, worktree: s.worktree, branch: s.branch, attached: !!s.attached,
     turns: s.turns, lastText: s.lastText, currentTool: s.currentTool, usage: s.usage,
     rateLimit: s.rateLimit, pending: [...s.pending.values()].map(pendingView), startedAt: s.startedAt,
   };
@@ -168,6 +168,67 @@ function createSession({ name, prompt }) {
 
   send(s, prompt);
   return s;
+}
+
+// A session started by Claude Code itself (terminal or VS Code) in a repo where
+// scripts/attach.mjs installed our hooks. We do not own the process, so there is
+// no stdin, no auto-commit and no undo; every turn's diff is recorded instead.
+function attachSession({ id, name, cwd }) {
+  let branch = null, base = null;
+  try {
+    branch = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    base = git(cwd, ['rev-parse', 'HEAD']);   // everything after this is the agent's work
+  } catch { /* not a repo */ }
+  const s = {
+    id, name, branch, base, worktree: cwd, proc: null, attached: true, state: 'working', turns: 0, lastText: '',
+    currentTool: null, usage: null, rateLimit: null, pending: new Map(), events: [], startedAt: Date.now(), buf: '',
+  };
+  sessions.set(id, s);
+  record(id, { type: 'session', subtype: 'created', name, branch, worktree: cwd, attached: true });
+  return s;
+}
+
+// `claude -p` does not fire SessionStart, so an attached headless session never
+// tells us its model. Every hook payload carries transcript_path; read it there.
+function modelFromTranscript(p) {
+  if (!p || !fs.existsSync(p)) return null;
+  try {
+    for (const l of fs.readFileSync(p, 'utf8').split('\n').filter(Boolean)) {
+      let j; try { j = JSON.parse(l); } catch { continue; }
+      const m = j.message?.model || j.model;
+      if (m) return m;
+    }
+  } catch { /* transcript unreadable; the recap just says "claude" */ }
+  return null;
+}
+
+function turnDiff(cwd, base, maxLines = 200) {
+  const from = base || 'HEAD';
+  const numstat = git(cwd, ['diff', '--numstat', from]);
+  const stat = numstat.split('\n').filter(Boolean).map((l) => {
+    const [add, del, file] = l.split('\t');
+    return { file, add: add === '-' ? 0 : +add, del: del === '-' ? 0 : +del };
+  });
+  const untracked = git(cwd, ['ls-files', '--others', '--exclude-standard']).split('\n').filter((f) => f && f !== '.claude/settings.local.json');
+  for (const f of untracked) stat.push({ file: f, add: 0, del: 0, untracked: true });
+  const full = git(cwd, ['diff', '--no-color', '--unified=2', from]);
+  const lines = full.split('\n');
+  return { stat, patch: { text: lines.slice(0, maxLines).join('\n'), truncated: lines.length > maxLines, total: lines.length } };
+}
+
+function buildRecap(s, extraArgs = [], cb) {
+  const args = [path.join(ROOT, 'scripts', 'build-recap.mjs'), s.id, ...extraArgs];
+  const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '', err = '';
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (err += d));
+  child.on('exit', (code) => {
+    if (code !== 0) return cb(new Error(err.trim().split('\n').at(-1) || `exit ${code}`));
+    const built = out.match(/Built ui(\/recaps\/[^\s]+\.html)/);
+    const href = built ? built[1] : null;
+    record(s.id, { type: 'recap', href, log: out.trim().split('\n')[0] });
+    cb(null, href);
+  });
 }
 
 function send(s, text) {
@@ -270,14 +331,42 @@ function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
-  const sid = url.searchParams.get('s');
+  const sidParam = url.searchParams.get('s');
 
   // ---- hooks from Claude Code (always answer 200 + JSON; anything else fails open) ----
   if (url.pathname.startsWith('/hooks/')) {
     let hook = {};
     try { hook = JSON.parse(await readBody(req) || '{}'); } catch { /* keep {} */ }
-    const s = sessions.get(sid);
     const ev = url.pathname.slice('/hooks/'.length);
+    const attach = url.searchParams.get('attach');
+    let sidResolved = sidParam;
+    if (!sidResolved && attach && hook.session_id) {
+      sidResolved = hook.session_id;
+      if (!sessions.has(sidResolved)) attachSession({ id: sidResolved, name: attach.replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'repo', cwd: hook.cwd || process.cwd() });
+    }
+    const s = sessions.get(sidResolved);
+    const sid = sidResolved;
+
+    if (ev === 'session-start') {
+      if (s) { s.state = 'working'; s.model = hook.model || modelFromTranscript(hook.transcript_path) || null; record(sid, { type: 'init', model: s.model || 'claude code', claudeSession: hook.session_id, apiKeySource: 'attached' }); broadcast({ type: 'session-state', session: sid, state: s.state }); }
+      return hookOk(res);
+    }
+    if (ev === 'prompt') {
+      if (s) { s.state = 'working'; record(sid, { type: 'prompt', text: String(hook.prompt || '').slice(0, 4000) }); broadcast({ type: 'session-state', session: sid, state: s.state }); }
+      return hookOk(res);
+    }
+    if (ev === 'session-end') {
+      if (s && !s.ended) {
+        s.ended = true;                       // SessionEnd can fire more than once
+        s.state = 'exited';
+        if (!s.model) s.model = modelFromTranscript(hook.transcript_path);
+        record(sid, { type: 'session', subtype: 'exited', reason: hook.reason });
+        if (s.model) record(sid, { type: 'init', model: s.model, claudeSession: hook.session_id, apiKeySource: 'attached' });
+        broadcast({ type: 'session-state', session: sid, state: s.state });
+        buildRecap(s, [], (e, href) => { if (e) record(sid, { type: 'recap_error', error: e.message }); else broadcast({ type: 'recap', session: sid, href }); });
+      }
+      return hookOk(res);
+    }
 
     if (ev === 'pre-tool') {
       const { tier, reason } = classify(hook);
@@ -303,6 +392,19 @@ const server = http.createServer(async (req, res) => {
       return hookOk(res);
     }
     if (ev === 'stop') {
+      if (s && s.attached) {
+        s.turns += 1;
+        s.state = 'idle';
+        s.lastText = String(hook.last_assistant_message || '').slice(0, 400);
+        if (hook.last_assistant_message) record(sid, { type: 'text', text: String(hook.last_assistant_message).slice(0, 4000) });
+        try {
+          const d = turnDiff(s.worktree, s.base);
+          const commits = s.base ? (git(s.worktree, ['log', '--oneline', `${s.base}..HEAD`]) || '').split('\n').filter(Boolean) : [];
+          record(sid, { type: 'turn_diff', turn: s.turns, msg: `turn ${s.turns}: ${s.lastText.replace(/\s+/g, ' ').slice(0, 60)}`, commits, ...d });
+        } catch (e) { record(sid, { type: 'checkpoint_error', error: String(e.message).slice(0, 300) }); }
+        broadcast({ type: 'session-state', session: sid, state: s.state, turns: s.turns, lastText: s.lastText });
+        return hookOk(res);
+      }
       if (s) {
         // commit per turn so "undo" is a git revert
         try {
@@ -323,6 +425,18 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(fs.readFileSync(UI));
+  }
+  // Static: built recaps and the replay out of ui/, plus a local preview of the
+  // docs/ folder that GitHub Pages will serve, so you can check it before pushing.
+  if (req.method === 'GET' && (url.pathname.startsWith('/recaps/') || url.pathname === '/replay.html' || url.pathname === '/docs' || url.pathname.startsWith('/docs/'))) {
+    const docs = url.pathname === '/docs' || url.pathname.startsWith('/docs/');
+    const base = path.join(ROOT, docs ? 'docs' : 'ui');
+    let rel = url.pathname.slice(1).split('/').filter((p) => p && p !== '..').join('/');
+    if (docs) rel = rel.replace(/^docs\/?/, '') || 'index.html';
+    const file = path.join(base, rel);
+    if (!file.startsWith(base) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return json(res, 404, { error: 'not found' });
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    return res.end(fs.readFileSync(file));
   }
   if (req.method === 'GET' && url.pathname === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
@@ -355,7 +469,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/message') {
     const b = JSON.parse(await readBody(req) || '{}');
     const s = sessions.get(b.session);
-    if (!s || s.state === 'exited') return json(res, 404, { error: 'no such live session' });
+    if (!s || s.state === 'exited' || !s.proc) return json(res, 404, { error: 'no such live session (attached sessions take input in their own terminal)' });
     send(s, b.text);
     return json(res, 200, { ok: true });
   }
@@ -364,14 +478,42 @@ const server = http.createServer(async (req, res) => {
     const s = sessions.get(b.session);
     if (!s) return json(res, 404, { error: 'no such session' });
     for (const id of [...s.pending.keys()]) decide(s.id, id, 'deny', 'session stopped');
+    if (!s.proc) { s.state = 'exited'; record(s.id, { type: 'session', subtype: 'detached' }); broadcast({ type: 'session-state', session: s.id, state: s.state }); return json(res, 200, { ok: true }); }
     if (b.hard) s.proc.kill('SIGTERM'); else s.proc.stdin.end();
     record(s.id, { type: 'session', subtype: b.hard ? 'killed' : 'stopping' });
     return json(res, 200, { ok: true });
+  }
+  if (req.method === 'POST' && url.pathname === '/recap') {
+    // Build a narrated recap page from this session's recording. Runs the
+    // build script as a child so a slow `say` never blocks a hook response.
+    const b = JSON.parse(await readBody(req) || '{}');
+    const sid = String(b.session || '').replace(/[^0-9a-f-]/gi, '');
+    const s = sessions.get(sid);
+    if (!s && !(sid && fs.existsSync(path.join(RECORDINGS, `${sid}.jsonl`)))) return json(res, 404, { error: 'no such session or recording' });
+    const extra = [];
+    if (b.llm) extra.push('--llm');
+    if (b.noAudio) extra.push('--no-audio');
+    buildRecap(s || { id: sid }, extra, (e, href) => (e ? json(res, 500, { error: e.message }) : json(res, 200, { ok: true, href })));
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/post-recap') {
+    // Deliberate, user-initiated: comments on the PR for the session's branch via `gh`.
+    const b = JSON.parse(await readBody(req) || '{}');
+    const sid = String(b.session || '').replace(/[^0-9a-f-]/gi, '');
+    const args = [path.join(ROOT, 'scripts', 'post-recap.mjs'), sid];
+    if (b.urlBase) args.push('--url-base', String(b.urlBase));
+    const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('exit', (code) => (code === 0 ? json(res, 200, { ok: true, url: out.trim() }) : json(res, 500, { error: err.trim() || `exit ${code}` })));
+    return;
   }
   if (req.method === 'POST' && url.pathname === '/undo') {
     const b = JSON.parse(await readBody(req) || '{}');
     const s = sessions.get(b.session);
     if (!s) return json(res, 404, { error: 'no such session' });
+    if (s.attached) return json(res, 400, { error: 'undo is not offered for attached sessions: it is your branch, use git' });
     try {
       const before = git(s.worktree, ['rev-parse', '--short', 'HEAD']);
       git(s.worktree, ['reset', '--hard', 'HEAD~1']);

@@ -1,4 +1,5 @@
 recordings/*.jsonl
+!recordings/demo/
 workspace/.worktrees/
 node_modules/
 .DS_Store

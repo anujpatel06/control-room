@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session records · Control Room</title>
+<meta name="description" content="What agents did in this repository, including what a human refused.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg:#0B0D10; --panel:#111419; --rule:#232830; --rule-soft:#1A1E25;
+    --ink:#E6E9ED; --ink-mute:#8A93A0; --ink-faint:#5C6470; --deny:#F87171; --accent:#7DD3FC;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .shell{max-width:900px;margin:0 auto;padding-inline:20px;padding-block:40px 72px;display:flex;flex-direction:column;gap:26px}
+  .lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+  h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.015em}
+  .lede{margin:0;color:var(--ink-mute);font-size:15px;max-width:62ch}
+  .lede b{color:var(--ink);font-weight:500}
+  .list{display:flex;flex-direction:column;border:1px solid var(--rule);border-radius:3px;overflow:hidden;background:var(--panel)}
+  a.row{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:14px 17px;border-bottom:1px solid var(--rule-soft);text-decoration:none;color:inherit}
+  a.row:last-child{border-bottom:none}
+  a.row:hover{background:var(--bg)}
+  a.row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .t{font-size:15px;font-weight:500;grid-column:1}
+  .m{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-mute);grid-column:1}
+  .r{grid-column:2;grid-row:1;text-align:right;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-faint)}
+  .r b{color:var(--deny);font-weight:500}
+  .d{grid-column:2;grid-row:2;text-align:right;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-faint)}
+  .empty{padding:24px 17px;color:var(--ink-faint)}
+  .foot{color:var(--ink-faint);font-size:12.5px;max-width:74ch}
+  @media (max-width:560px){a.row{grid-template-columns:1fr}.r,.d{grid-column:1;text-align:left}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div>
+    <span class="lbl">Control Room</span>
+    <h1>Session records</h1>
+  </div>
+  <p class="lede">Each entry is the record of one coding-agent session: the task it was given, every action a human held or refused, the changes it made, and anything that was rolled back. <b>A diff tells you what changed. These tell you what nearly happened.</b></p>
+  <div class="list">
+      <a class="row" href="recaps/priya-app--feat-third-task.html">
+        <span class="t">3 actions never happened, 7 decisions by Anuj</span>
+        <span class="m">priya-app · feat/third-task · supervised by Anuj</span>
+        <span class="r"><b>3 refused</b></span>
+        <span class="d">15 Sept 2026 · 2:18</span>
+      </a>
+      <a class="row" href="recaps/tasks-90a2.html">
+        <span class="t">1 action never happened, 1 turn rolled back, 3 decisions by Anuj</span>
+        <span class="m">tasks · cr/tasks-90a2 · supervised by Anuj</span>
+        <span class="r"><b>1 refused</b></span>
+        <span class="d">14 Sept 2026 · 1:38</span>
+      </a></div>
+  <p class="foot">Generated 15/09/2026, 17:32:13 by the Control Room. Every figure on these pages is computed from the session recordings, not written by a model.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,468 @@
+// Build a narrated, shareable recap of one Control Room session.
+//
+//   node scripts/build-recap.mjs <session-id | latest> [--llm] [--no-audio] [--voice Samantha] [--avatar AP]
+//
+// Reads recordings/<id>.jsonl plus the per-turn commits in the agent's worktree
+// (including commits that were undone, via the reflog), computes a storyboard,
+// optionally asks Claude to rewrite the narration (facts stay computed), records
+// narration with macOS `say`, and writes one self-contained HTML file to
+// ui/recaps/<name>-<id4>.html. That file is the link you share.
+//
+// Principle: every number, diff and decision on screen is computed from the
+// recording. The language model, when used, only rewrites the sentences.
+
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync, rmSync } from 'node:fs';
+import { join, dirname, basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const recordingsDir = join(root, 'recordings');
+const templatePath = join(root, 'ui', 'recap.template.html');
+const outDir = join(root, 'ui', 'recaps');
+
+// ---------------------------------------------------------------------------
+// args
+// ---------------------------------------------------------------------------
+const argv = process.argv.slice(2);
+const flag = (name, dflt) => {
+  const i = argv.indexOf(name);
+  if (i === -1) return dflt;
+  if (dflt === false || dflt === true) return true;
+  return argv[i + 1];
+};
+const wantLLM = flag('--llm', false);
+const noAudio = flag('--no-audio', false);
+const VOICE = flag('--voice', process.env.RECAP_VOICE || 'Samantha');
+const RATE = Number(flag('--rate', process.env.RECAP_RATE || 190));
+const AVATAR = flag('--avatar', process.env.RECAP_AVATAR || 'AP');
+const AUTHOR = flag('--author', process.env.RECAP_AUTHOR || 'Anuj');
+// Who is this recap for? A reviewer opening someone else's pull request was not
+// in the room, so "you" is the wrong pronoun for them: the supervisor is named
+// instead. Pass --audience supervisor for the second-person version.
+const AUDIENCE = flag('--audience', process.env.RECAP_AUDIENCE || 'reviewer');
+const forReviewer = AUDIENCE !== 'supervisor';
+const SUP = forReviewer ? AUTHOR : 'You';
+const sup = forReviewer ? AUTHOR : 'you';
+const supPoss = forReviewer ? `${AUTHOR}'s` : 'your';
+const V = (third, second) => (forReviewer ? third : second);
+const BRANCH = flag('--branch', null);      // build one record for a whole branch
+const REPO = flag('--repo', null);         // ...limited to sessions from this repo
+const VALUE_FLAGS = new Set(['--voice', '--rate', '--avatar', '--author', '--branch', '--repo', '--audience']);
+const target = argv.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(argv[i - 1])) || 'latest';
+
+// ---------------------------------------------------------------------------
+// load recording
+// ---------------------------------------------------------------------------
+function loadRecording(idOrLatest) {
+  const files = readdirSync(recordingsDir).filter((f) => f.endsWith('.jsonl'));
+  if (!files.length) throw new Error('no recordings in recordings/');
+  let file;
+  if (idOrLatest === 'latest') {
+    file = files.map((f) => ({ f, m: statSync(join(recordingsDir, f)).mtimeMs })).sort((a, b) => b.m - a.m)[0].f;
+  } else {
+    file = files.find((f) => f.startsWith(idOrLatest));
+    if (!file) throw new Error(`no recording starting with ${idOrLatest}`);
+  }
+  const events = readFileSync(join(recordingsDir, file), 'utf8')
+    .split('\n').filter(Boolean)
+    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter(Boolean);
+  return { id: file.replace(/\.jsonl$/, ''), events };
+}
+
+// A branch is what gets reviewed, not a session. One branch collects several
+// sessions over days; this merges every recording made on it into one record,
+// oldest first, so the reviewer opens a single link.
+function loadBranch(branch, repo) {
+  const want = repo ? resolve(repo) : null;
+  const runs = [];
+  for (const f of readdirSync(recordingsDir).filter((f) => f.endsWith('.jsonl'))) {
+    const events = readFileSync(join(recordingsDir, f), 'utf8')
+      .split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+    if (!events.length) continue;
+    const c = events.find((e) => e.type === 'session' && e.subtype === 'created');
+    if (!c || c.branch !== branch) continue;
+    if (want && c.worktree && resolve(c.worktree) !== want) continue;
+    runs.push({ id: f.replace(/\.jsonl$/, ''), at: events[0].at, events, created: c });
+  }
+  if (!runs.length) throw new Error(`no recordings on branch "${branch}"${repo ? ` in ${repo}` : ''}`);
+  runs.sort((a, b) => a.at - b.at);
+  const events = [];
+  runs.forEach((r, i) => {
+    for (const e of r.events) events.push(i === 0 ? e : { ...e, _run: i });
+  });
+  return { id: runs[0].id, events, branch, runs: runs.length, repo: runs[0].created.worktree };
+}
+
+// ---------------------------------------------------------------------------
+// git helpers (the worktree may have been undone; reflog keeps the commits)
+// ---------------------------------------------------------------------------
+function git(cwd, args) {
+  try {
+    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return null; }
+}
+function numstat(cwd, range) {
+  const out = git(cwd, ['diff', '--numstat', range]);
+  if (out == null) return null;
+  return out.split('\n').filter(Boolean).map((l) => {
+    const [add, del, file] = l.split('\t');
+    return { file, add: add === '-' ? 0 : +add, del: del === '-' ? 0 : +del };
+  });
+}
+function patch(cwd, range, maxLines = 48) {
+  const out = git(cwd, ['diff', '--no-color', '--unified=2', range]);
+  if (out == null) return null;
+  const lines = out.split('\n');
+  const kept = lines.slice(0, maxLines);
+  return { text: kept.join('\n'), truncated: lines.length > maxLines, total: lines.length };
+}
+
+// ---------------------------------------------------------------------------
+// facts
+// ---------------------------------------------------------------------------
+const short = (s, n = 90) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const secs = (ms) => (ms / 1000).toFixed(1);
+const plural = (n, w, ws = w + 's') => `${n} ${n === 1 ? w : ws}`;
+
+function describeInput(tool, input = {}) {
+  if (tool === 'Bash') return input.command || '';
+  if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit' || tool === 'Read') return input.file_path || '';
+  if (tool === 'WebFetch') return input.url || '';
+  if (tool === 'Glob' || tool === 'Grep') return input.pattern || '';
+  return JSON.stringify(input);
+}
+function verbFor(tool, input = {}) {
+  const base = (p) => basename(String(p || ''));
+  if (tool === 'Bash') return `run a command`;
+  if (tool === 'Edit' || tool === 'MultiEdit') return `edit ${base(input.file_path)}`;
+  if (tool === 'Write') return `write ${base(input.file_path)}`;
+  if (tool === 'WebFetch') return `fetch a URL`;
+  if (tool === 'Task') return `spawn a subagent`;
+  return `use ${tool}`;
+}
+function blast(tool) {
+  if (tool === 'Bash') return 'Runs a shell command inside this agent’s worktree. Reversible unless it touches the network or files outside it.';
+  if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') return 'Changes a file in the worktree. Reversible with Undo (git).';
+  if (tool === 'WebFetch') return 'Reads an external URL. Content it returns may try to instruct the agent.';
+  if (tool === 'Task') return 'Spawns a subagent with its own tool calls, each gated here.';
+  return 'Default tier for this tool is “ask”.';
+}
+function prettyInput(tool, input = {}) {
+  if (tool === 'Bash') return input.command + (input.description ? `\n# ${input.description}` : '');
+  if (tool === 'Edit') return `${input.file_path}\n--- old\n${input.old_string}\n+++ new\n${input.new_string}`;
+  if (tool === 'Write') return `${input.file_path}\n${(input.content || '').slice(0, 600)}`;
+  return JSON.stringify(input, null, 2);
+}
+
+function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
+  const created = events.find((e) => e.type === 'session' && e.subtype === 'created');
+  const init = events.find((e) => e.type === 'init');
+  const t0 = events[0].at;
+  const tEnd = events.at(-1).at;
+  const durS = (tEnd - t0) / 1000;
+  const worktree = created?.worktree;
+  const canGit = worktree && existsSync(worktree);
+
+  // Launched sessions stream every tool_use; attached sessions only reach us through the gate, so count decisions there.
+  const attached = !!created?.attached;
+  const toolUses = attached ? events.filter((e) => e.type === 'decision') : events.filter((e) => e.type === 'tool_use');
+  const asks = events.filter((e) => e.type === 'ask');
+  const decisions = events.filter((e) => e.type === 'decision');
+  const results = events.filter((e) => e.type === 'tool_result');
+  const checkpoints = events.filter((e) => e.type === 'checkpoint' || e.type === 'turn_diff');
+  const undos = events.filter((e) => e.type === 'undo');
+  const finals = events.filter((e) => e.type === 'result');
+  const texts = events.filter((e) => e.type === 'text');
+  const humanDecisions = decisions.filter((d) => d.waitedMs != null);
+  const denied = decisions.filter((d) => d.decision === 'deny');
+  const blocked = decisions.filter((d) => d.tier === 'never');
+  const humanWaitMs = humanDecisions.reduce((n, d) => n + d.waitedMs, 0);
+  const lastResult = finals.at(-1);
+
+  const name = created?.name ?? id.slice(0, 8);
+  const model = init?.model ?? 'claude';
+  const date = new Date(t0);
+  const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const scenes = [];
+
+  // 1. cover ---------------------------------------------------------------
+  // Refusals and undos first: they are the only facts a reviewer cannot get
+  // from the diff, and the whole reason this page exists.
+  const headlineBits = [];
+  if (denied.length) headlineBits.push(`${plural(denied.length, 'action')} never happened`);
+  if (undos.length) headlineBits.push(`${plural(undos.length, 'turn')} rolled back`);
+  if (humanDecisions.length) headlineBits.push(plural(humanDecisions.length, 'decision') + V(` by ${AUTHOR}`, ' from you'));
+  if (!denied.length && !undos.length && checkpoints.length) headlineBits.push(plural(checkpoints.length, 'turn') + (attached ? '' : ' committed'));
+  scenes.push({
+    kind: 'cover',
+    title: headlineBits.length ? headlineBits.join(', ') : 'A session with nothing to flag',
+    runs: sbRuns,
+    orient: forReviewer
+      ? `An agent wrote the branch you are about to review${sbRuns > 1 ? `, across ${plural(sbRuns, 'session')}` : ''}. This is what happened while it was writing it — including the things it was stopped from doing, which the diff cannot show you.`
+      : `Everything your agent did in this session, including what you stopped it from doing.`,
+    repo: worktree ? basename(worktree) : null,
+    branch: created?.branch || null,
+    stats: [
+      ['Ran for', `${durS.toFixed(0)}s`, ''],
+      [V('Waiting on a human', 'Waiting on you'), `${secs(humanWaitMs)}s`, 'ask'],
+      ['Tool calls', String(toolUses.length), ''],
+      [V('Asked ' + AUTHOR, 'Asked you'), String(humanDecisions.length), ''],
+      ['Refused', String(denied.length), denied.length ? 'deny' : ''],
+      ['Rolled back', String(undos.length), undos.length ? 'undo' : ''],
+    ],
+    narration: `${sbRuns > 1 ? `${plural(sbRuns, 'agent session')} on this branch, ${durS.toFixed(0)} seconds in total` : `Agent ${name} ran for ${durS.toFixed(0)} seconds`} under ${supPoss} supervision. ${plural(toolUses.length, 'tool call')}, ${humanDecisions.length} held for a decision, ${denied.length} refused${undos.length ? `, ${plural(undos.length, 'turn')} rolled back` : ''}.`,
+  });
+
+  // 2. intent. One scene per thing that was asked for, in order, so a branch
+  //    record shows every instruction the branch was built from.
+  const prompts = events.filter((e) => e.type === 'prompt');
+  const task = created?.prompt ?? prompts[0]?.text ?? '';
+  let askNo = 0;
+
+  // 3. walk the run in order ----------------------------------------------
+  let quiet = [];
+  let turn = 0;
+  const flushQuiet = () => {
+    if (!quiet.length) return;
+    const tools = [...new Set(quiet.map((q) => q.tool))];
+    scenes.push({
+      kind: 'quiet',
+      items: quiet.map((q) => ({ tool: q.tool, sub: short(describeInput(q.tool, q.input), 80) })),
+      narration: `${plural(quiet.length, 'read-only step')} ran without asking: ${tools.join(', ')}. Logged, not gated.`,
+    });
+    quiet = [];
+  };
+
+  for (const e of events) {
+    if (e.type === 'prompt') {
+      flushQuiet();
+      askNo += 1;
+      scenes.push({
+        kind: 'intent',
+        text: e.text,
+        ordinal: prompts.length > 1 ? askNo : null,
+        of: prompts.length > 1 ? prompts.length : null,
+        narration: prompts.length > 1
+          ? `Instruction ${askNo} of ${prompts.length}, word for word: ${short(e.text, 130)}`
+          : `The task ${V(`${AUTHOR} gave it`, 'you gave it')}, word for word: ${short(e.text, 150)}`,
+      });
+      continue;
+    }
+    if (e.type === 'decision') {
+      const ask = asks.find((a) => a.id === e.id);
+      const tool = e.tool;
+      const input = ask?.input ?? e.input ?? {};
+      const res = results.find((r) => r.id === e.id);
+      if (e.tier === 'log') { quiet.push({ tool, input }); continue; }
+      flushQuiet();
+      const human = e.waitedMs != null;
+      const w = human ? secs(e.waitedMs) : null;
+      const fileTool = tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit';
+      const what = short(tool === 'Bash' ? describeInput(tool, input) : basename(describeInput(tool, input)), 70);
+      const asked = fileTool ? `It asked to ${verbFor(tool, input)}` : `It asked to ${verbFor(tool, input)}: ${what}`;
+      let narration;
+      if (e.tier === 'never') {
+        narration = `${asked.replace('It asked', 'It tried')}. A never rule blocked it before ${V('anyone', 'you')} saw it.`;
+      } else if (e.decision === 'allow') {
+        narration = `${asked}. ${SUP} allowed it${e.scope === 'always' ? ' as a rule' : ''} after ${w} seconds.`;
+      } else {
+        narration = `${asked}. ${SUP} said no after ${w} seconds${e.scope === 'always' ? ', now a never rule' : ''}. The agent saw the refusal as an error and carried on without it.`;
+      }
+      scenes.push({
+        kind: 'decision',
+        tool, key: e.key ?? ask?.key ?? tool, tier: e.tier ?? ask?.tier ?? 'ask',
+        input: prettyInput(tool, input), blast: blast(tool),
+        decision: e.decision, scope: e.scope, waitedS: w, why: e.why,
+        resultPreview: res ? short(res.content, 140) : null, resultError: !!res?.is_error,
+        narration,
+      });
+      continue;
+    }
+    if (e.type === 'checkpoint') {
+      flushQuiet();
+      turn += 1;
+      const range = `${e.sha}~1..${e.sha}`;
+      const stat = canGit ? numstat(worktree, range) : null;
+      const p = canGit ? patch(worktree, range) : null;
+      const add = (stat || []).reduce((n, s) => n + s.add, 0);
+      const del = (stat || []).reduce((n, s) => n + s.del, 0);
+      const files = (stat || []).length;
+      scenes.push({
+        kind: 'diff',
+        turn, sha: e.sha, msg: e.msg, stat, patch: p,
+        narration: stat
+          ? (files
+            ? `That round of work was saved as ${e.sha}: ${plural(files, 'file')}, ${add} ${add === 1 ? 'line' : 'lines'} added, ${del} removed. Each round is saved separately, so any one of them can be undone.`
+            : `Turn ${turn} was committed as ${e.sha} with no file changes.`)
+          : `Turn ${turn} was committed as ${e.sha}. The worktree is gone, so the diff is not available in this recap.`,
+      });
+      continue;
+    }
+    if (e.type === 'turn_diff') {
+      flushQuiet();
+      turn += 1;
+      const stat = (e.stat || []).filter((x) => x.file !== '.claude/settings.local.json');
+      const add = stat.reduce((n, x) => n + x.add, 0);
+      const del = stat.reduce((n, x) => n + x.del, 0);
+      scenes.push({
+        kind: 'diff',
+        turn, sha: null, msg: e.msg, stat, patch: e.patch,
+        narration: stat.length
+          ? `That round of work changed ${plural(stat.length, 'file')}: ${add} ${add === 1 ? 'line' : 'lines'} added, ${del} removed.`
+          : `That round of work changed no files.`,
+      });
+      continue;
+    }
+    if (e.type === 'undo') {
+      flushQuiet();
+      const range = `${e.to}..${e.from}`;
+      const stat = canGit ? numstat(worktree, range) : null;
+      const p = canGit ? patch(worktree, range) : null;
+      scenes.push({
+        kind: 'undo',
+        from: e.from, to: e.to, stat, patch: p,
+        narration: `${SUP} undid that turn. The tree is back at ${e.to}. The change never reached the branch ${V('you are reviewing', 'you pushed')}, but the recording kept it.`,
+      });
+      continue;
+    }
+  }
+  flushQuiet();
+
+  // 4. outcome vs intent --------------------------------------------------
+  const finalText = lastResult?.text || texts.at(-1)?.text || '';
+  // What did not happen: every denied call, whether a person said no or a never rule did.
+  const notDone = denied.map((d) => {
+    const ask = asks.find((a) => a.id === d.id);
+    const input = ask?.input ?? d.input ?? {};
+    return { tool: d.tool, what: short(describeInput(d.tool, input), 90), by: d.tier === 'never' ? 'policy' : 'you' };
+  });
+  const head = canGit && !created?.attached ? git(worktree, ['rev-parse', '--short', 'HEAD']) : null;
+  scenes.push({
+    kind: 'outcome',
+    task, report: finalText, notDone, head, turns: lastResult?.num_turns, cost: lastResult?.cost_usd,
+    narration: (() => {
+      let n = `The agent reported: ${short(finalText, 150)}`;
+      if (!notDone.length) return n;
+      const byHuman = notDone.filter((x) => x.by !== 'policy').length;
+      const byPolicy = notDone.length - byHuman;
+      const parts = [];
+      if (byHuman) parts.push(`${byHuman} ${byHuman === 1 ? 'was' : 'were'} refused by ${sup}`);
+      if (byPolicy) parts.push(`${byPolicy} ${byPolicy === 1 ? 'was' : 'were'} blocked by policy before anyone saw ${byPolicy === 1 ? 'it' : 'them'}`);
+      return `${n} Read that with a caveat: ${plural(notDone.length, 'requested step')} never ran. ${parts.join(', and ')}.`;
+    })(),
+  });
+
+  // 5. credits ------------------------------------------------------------
+  scenes.push({
+    kind: 'credits',
+    narration: `That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.`,
+  });
+
+  return {
+    id, name, branch: created?.branch, runs: sbRuns, cwd: worktree || null, attached: !!created?.attached, model, date: dateStr, startedAt: t0, durationS: durS,
+    humanWaitS: humanWaitMs / 1000, avatar: AVATAR, author: AUTHOR, audience: AUDIENCE, supervisor: AUTHOR, voice: noAudio ? null : VOICE,
+    generatedAt: new Date().toISOString(), scenes,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// optional: let Claude rewrite the narration (facts stay fixed)
+// ---------------------------------------------------------------------------
+function polishWithClaude(sb) {
+  const facts = sb.scenes.map((s, i) => ({ i, kind: s.kind, draft: s.narration, facts: factsFor(s) }));
+  const schema = {
+    type: 'object',
+    properties: { narration: { type: 'array', items: { type: 'string' }, minItems: facts.length, maxItems: facts.length } },
+    required: ['narration'],
+  };
+  const prompt = [
+    `You are writing the voice-over for a ${facts.length}-scene recap of a coding agent session, for the person who supervised it.`,
+    `Rewrite each draft as one or two plain sentences, at most 32 words, second person, present tense, no hype, no adjectives about quality.`,
+    `Use only the facts given. Keep every number, file name, command and sha exactly. Do not add claims. Do not mention that you are a model.`,
+    `Return the same number of strings in order.`,
+    JSON.stringify(facts),
+  ].join('\n');
+  const r = spawnSync('claude', ['-p', '--model', 'sonnet', '--output-format', 'json', '--max-turns', '1', '--tools', '', '--json-schema', JSON.stringify(schema), prompt], { encoding: 'utf8', timeout: 90_000 });
+  if (r.status !== 0) throw new Error(`claude exited ${r.status}: ${short(r.stderr, 200)}`);
+  const out = JSON.parse(r.stdout);
+  if (out.is_error) throw new Error(short(out.result, 200));
+  const parsed = out.structured_output ?? (typeof out.result === 'string' ? JSON.parse(out.result) : out.result);
+  if (!Array.isArray(parsed?.narration) || parsed.narration.length !== facts.length) throw new Error('unexpected shape');
+  sb.scenes.forEach((s, i) => { s.narrationDraft = s.narration; s.narration = String(parsed.narration[i]).trim(); });
+  sb.polished = true;
+}
+function factsFor(s) {
+  const { narration, patch, input, ...rest } = s;
+  return rest;
+}
+
+// ---------------------------------------------------------------------------
+// audio: macOS say -> aac, embedded as data URIs
+// ---------------------------------------------------------------------------
+function narrate(sb) {
+  const tmp = join(tmpdir(), `recap-${sb.id.slice(0, 8)}`);
+  mkdirSync(tmp, { recursive: true });
+  let ok = 0;
+  sb.scenes.forEach((s, i) => {
+    const aiff = join(tmp, `s${i}.aiff`);
+    const m4a = join(tmp, `s${i}.m4a`);
+    const a = spawnSync('say', ['-v', VOICE, '-r', String(RATE), '-o', aiff, s.narration], { encoding: 'utf8' });
+    if (a.status !== 0) { console.warn(`  say failed on scene ${i}: ${short(a.stderr, 120)}`); return; }
+    const b = spawnSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '32000', aiff, m4a], { encoding: 'utf8' });
+    if (b.status !== 0) { console.warn(`  afconvert failed on scene ${i}: ${short(b.stderr, 120)}`); return; }
+    const info = spawnSync('afinfo', [m4a], { encoding: 'utf8' }).stdout || '';
+    const dur = Number((info.match(/estimated duration:\s*([\d.]+)/) || [])[1]) || null;
+    s.audio = `data:audio/mp4;base64,${readFileSync(m4a).toString('base64')}`;
+    s.audioS = dur;
+    ok += 1;
+  });
+  rmSync(tmp, { recursive: true, force: true });
+  return ok;
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+const rec = BRANCH ? loadBranch(BRANCH, REPO) : loadRecording(target);
+const sb = buildStoryboard(rec);
+if (BRANCH) { sb.branch = BRANCH; sb.name = basename(rec.repo || '') || sb.name; }
+
+if (wantLLM) {
+  try { polishWithClaude(sb); console.log('narration rewritten by claude'); }
+  catch (e) { console.warn(`claude polish skipped (${e.message}); using computed narration`); }
+}
+
+// scene duration: audio length + a beat, or a reading-speed estimate
+for (const s of sb.scenes) {
+  const words = s.narration.split(/\s+/).length;
+  s.durS = Math.max(3.5, words / 2.6 + 1.2);
+}
+if (!noAudio) {
+  const n = narrate(sb);
+  console.log(`narration: ${n}/${sb.scenes.length} scenes voiced by ${VOICE}`);
+  for (const s of sb.scenes) if (s.audioS) s.durS = s.audioS + 0.8;
+}
+sb.totalS = sb.scenes.reduce((n, s) => n + s.durS, 0);
+
+mkdirSync(outDir, { recursive: true });
+mkdirSync(join(root, 'recaps'), { recursive: true });
+const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+const slug = BRANCH ? `${safe(sb.name)}--${safe(BRANCH)}` : `${sb.name}-${sb.id.slice(0, 4)}`;
+const jsonPath = join(root, 'recaps', `${slug}.json`);
+writeFileSync(jsonPath, JSON.stringify({ ...sb, scenes: sb.scenes.map(({ audio, ...s }) => s) }, null, 2));
+
+const html = readFileSync(templatePath, 'utf8')
+  .replace('__RECAP__', JSON.stringify(sb).replace(/<\/script>/gi, '<\\/script>'))
+  .replaceAll('__TITLE__', `${sb.name} · ${sb.scenes[0].title}`)
+  .replaceAll('__DESC__', `Recap of a Control Room session: ${sb.scenes[0].narration}`);
+const outPath = join(outDir, `${slug}.html`);
+writeFileSync(outPath, html);
+
+console.log(`Built ui/recaps/${slug}.html — ${BRANCH ? `branch "${BRANCH}", ${sb.runs} session(s), ` : ''}${sb.scenes.length} scenes, ${sb.totalS.toFixed(0)}s, ${Math.round(html.length / 1024)} KB`);
+for (const s of sb.scenes) console.log(`  ${s.kind.padEnd(9)} ${s.durS.toFixed(1)}s  ${short(s.narration, 90)}`);
