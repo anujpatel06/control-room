@@ -19,14 +19,24 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const s = (n) => join(root, 'scripts', n);
-const run = (file, args = []) => {
+// Commands a person typed and is waiting on may mention an update. The hook
+// never does: nothing goes in front of an agent's tool call.
+const NOTIFY = new Set(['attach', 'on', 'init', 'record', 'recap', 'post', 'publish']);
+
+const run = async (file, args = []) => {
   const r = spawnSync(process.execPath, [file, ...args], { stdio: 'inherit' });
+  if (NOTIFY.has(cmd) && (r.status ?? 0) === 0) {
+    try {
+      const { updateCheck, printUpdate } = await import('../scripts/update-check.mjs');
+      printUpdate(await updateCheck());
+    } catch { /* an update notice is never worth an error */ }
+  }
   process.exit(r.status ?? 0);
 };
 
 const [cmd = 'attach', ...rest] = process.argv.slice(2);
 
-function main() {
+async function main() {
 switch (cmd) {
   case 'attach': case 'on': case 'init':
     return run(s('attach.mjs'), rest);
@@ -95,4 +105,4 @@ switch (cmd) {
 }
 }
 
-main();
+await main();

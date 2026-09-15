@@ -67,7 +67,16 @@ That is the whole upgrade. Hooks invoke `nearly` by name and resolve it fresh
 each time they fire, so every repo you turned it on for picks up the new version
 at once and nothing has to be turned on again.
 
-Two exceptions, and `nearly` says which one applies when you turn it on:
+Nothing updates on its own: npm never pushes anything to anyone's machine. What
+you get instead is a notice. Once a day, when you run a command and are already
+waiting on it, `nearly` checks whether a newer version exists and tells you in
+two lines. It never runs in the hook path, so a registry lookup can never sit in
+front of an action an agent is waiting to take, and it goes quiet on a failed
+network rather than making it your problem. `NEARLY_NO_UPDATE_CHECK=1` turns it
+off for good.
+
+Two exceptions to the one-command upgrade, and `nearly` says which applies when
+you turn it on:
 
 - Run through `npx` with nothing installed globally, and the hooks are pinned to
   the version that wrote them, on purpose: resolving `@latest` before every tool

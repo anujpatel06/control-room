@@ -175,3 +175,27 @@ test('hooks resolve the command fresh, so upgrading reaches every repo', () => {
       `unrecognised hook command: ${cmd}`);
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
+
+test('the update check never delays an agent and never fails a command', async () => {
+  const { updateCheck } = await import('../scripts/update-check.mjs');
+
+  // Off when asked.
+  assert.equal(await updateCheck.call(null), null, 'no TTY in tests, so it stays quiet');
+
+  // A hook must never carry a registry lookup: the notice is wired only to
+  // commands a person typed, so the hook command must not import it at all.
+  const hookSrc = readFileSync(join(root, 'scripts', 'hook.mjs'), 'utf8');
+  assert.doesNotMatch(hookSrc, /update-check|registry\.npmjs/, 'the hook path must stay clean');
+
+  // And a broken network must not break a command.
+  const r = spawnSync(process.execPath, ['-e', `
+    process.env.NEARLY_NO_UPDATE_CHECK = '';
+    global.fetch = () => Promise.reject(new Error('offline'));
+    const m = await import(${JSON.stringify(join(root, 'scripts', 'update-check.mjs'))});
+    const out = await m.updateCheck();
+    m.printUpdate(out);
+    console.log('survived');
+  `.trim()], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /survived/);
+});
