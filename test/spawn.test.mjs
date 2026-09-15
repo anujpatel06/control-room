@@ -19,7 +19,10 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:
 import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 49000 + Math.floor(Math.random() * 90);   // clear of resilience.test.mjs, which roams 48000-48899
+// Test ports stay below 49152. Windows starts its ephemeral range there and
+// WinNAT reserves blocks inside it, so binding one comes back as
+// "listen EACCES: permission denied" — on that runner only, at random.
+const PORT = 46000 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 // Windows keeps a directory busy until every handle inside it is closed, and

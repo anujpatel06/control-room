@@ -263,7 +263,7 @@ test('a truncated recording is declared, not papered over', async () => {
 // blamed at first on an unrelated stale server.
 test('a built record can actually be fetched from the server', async () => {
   const { spawn } = await import('node:child_process');
-  const port = 47960 + Math.floor(Math.random() * 30);
+  const port = 46500 + Math.floor(Math.random() * 90);
   const pages = mkdtempSync(join(tmpdir(), 'cr-pages-'));
   const recs = mkdtempSync(join(tmpdir(), 'cr-serve-'));
   writeFileSync(join(pages, 'demo.html'), '<title>a record</title>');

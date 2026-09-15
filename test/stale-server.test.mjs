@@ -20,7 +20,10 @@ import { mkdtempSync, rmSync, cpSync, writeFileSync, readFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 49200 + Math.floor(Math.random() * 90);
+// Test ports stay below 49152. Windows starts its ephemeral range there and
+// WinNAT reserves blocks inside it, so binding one comes back as
+// "listen EACCES: permission denied" — on that runner only, at random.
+const PORT = 46100 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 // Windows keeps a directory busy until every handle inside it is closed, and
@@ -160,7 +163,7 @@ async function oldServer(port, { sessions = 0 } = {}) {
 }
 
 test('an idle server too old to be asked is closed anyway', async () => {
-  const port = 49400 + Math.floor(Math.random() * 90);
+  const port = 46200 + Math.floor(Math.random() * 90);
   const old = await oldServer(port);
   try {
     const { reclaim, identify } = await import('../server/reclaim.mjs');
@@ -179,7 +182,7 @@ test('a server in use is never closed, however old it is', async () => {
   // Someone is mid-decision behind it. Ending that server hands their held
   // request back to the agent's own prompt, which is the whole thing this
   // project exists to prevent — and no amount of staleness is worth it.
-  const port = 49500 + Math.floor(Math.random() * 90);
+  const port = 46300 + Math.floor(Math.random() * 90);
   const old = await oldServer(port, { sessions: 1 });
   let killed = false;
   try {
@@ -197,7 +200,7 @@ test('something that is not ours on the port is never touched', async () => {
   // The rule that makes killing by port defensible: two independent answers
   // only this server gives. A plain web server on 47653 must be left alone.
   const { createServer } = await import('node:http');
-  const port = 49600 + Math.floor(Math.random() * 90);
+  const port = 46400 + Math.floor(Math.random() * 90);
   const stranger = createServer((q, r) => {
     r.writeHead(200, { 'content-type': 'application/json' });
     r.end(JSON.stringify({ ok: true, sessions: 3 }));      // /health-shaped by luck
