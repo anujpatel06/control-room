@@ -317,6 +317,28 @@ node scripts/publish-pages.mjs --base https://<user>.github.io/<repo>
 
 That copies every built recap into `docs/records/` and writes `docs/index.html`, an index of the sessions on record. Commit `docs/`, then set **Settings → Pages → branch `main`, folder `/docs`**. Preview it locally first at http://127.0.0.1:47653/docs/ while the server is running.
 
+## The server, and why you never start it
+
+The first hook that needs the server starts it, and it stays up for the rest of
+the day rather than paying the startup cost on every tool call. Two consequences
+had to be designed for, because both were found the hard way on other people's
+machines.
+
+A server outlives the run that started it, so one `npx nearly-cli` — or any
+upgrade — can leave the previous build holding the port. It keeps answering,
+from a directory npm has since replaced, which is why its record pages 404 and
+why upgrading appears to do nothing at all. Every server now says which build it
+is and where it lives, and a hook from a different install replaces it before
+doing anything else. It will not do that while somebody is mid-decision: dropping
+a held request would hand it back to the agent's own prompt, which is the one
+outcome this project exists to prevent. Builds older than 0.1.8 cannot be asked
+to stand down, so `nearly` names the problem and gives you the command for your
+platform instead of leaving you to work it out.
+
+And a server with no sessions that nobody has asked anything of for thirty
+minutes exits on its own. There is nothing to remember to shut down, and nothing
+squats on a port for days.
+
 ## Why the hook fails open
 
 Claude Code treats a hook that times out, errors, or returns anything other than `200` with JSON as a non-blocking error and lets the tool call proceed. So this server always answers with JSON, holds "ask" calls for at most `ASK_TIMEOUT_MS`, and denies when nobody decides. The hook's own timeout is set longer than that.

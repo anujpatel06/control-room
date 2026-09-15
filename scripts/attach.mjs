@@ -28,7 +28,7 @@ import { ADAPTERS } from '../server/adapters.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
-const PORT = 47653;
+const PORT = Number(process.env.NEARLY_PORT || 47653);
 
 // What the hooks should invoke, in order of preference. This choice decides
 // whether upgrading the tool ever reaches the repos it was turned on for.
@@ -178,6 +178,45 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// A server from somewhere else, already holding the port
+// ---------------------------------------------------------------------------
+// The server outlives the run that starts it. So a single `npx nearly-cli`, or
+// any upgrade, can leave the previous build squatting — answering from a
+// directory npm has since replaced, 404ing its own record pages, and making
+// every fix since invisible. A hook cannot say any of this out loud; this
+// command can, because you are here reading it.
+//
+// Builds from 0.1.8 stand down when asked. Older ones have no way to be asked,
+// so the honest thing is to name the problem and the exact command.
+async function checkPort() {
+  let h;
+  try {
+    const r = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(700) });
+    if (!r.ok) return null;
+    h = await r.json();
+  } catch { return null; }                       // nothing running: the normal case
+
+  let mine = root;
+  try { mine = realpathSync(root); } catch { /* compare the literal path */ }
+  if (h.root === mine) return null;              // it is us
+
+  try {
+    const r = await fetch(`http://127.0.0.1:${PORT}/exit`, { method: 'POST', signal: AbortSignal.timeout(2000) });
+    if (r.ok) return { replaced: true, from: h.root || 'an older build' };
+    if (r.status === 409) return { busy: true, from: h.root || 'an older build' };
+  } catch { /* fall through to the manual instruction */ }
+
+  return {
+    stuck: true,
+    from: h.root || 'an older build (it does not say where it lives)',
+    how: process.platform === 'win32'
+      ? `netstat -ano | findstr :${PORT}   then   taskkill /PID <pid> /F`
+      : `lsof -ti:${PORT} -sTCP:LISTEN | xargs kill`,
+  };
+}
+const port = off ? null : await checkPort();
+
+// ---------------------------------------------------------------------------
 // git pre-push hook
 // ---------------------------------------------------------------------------
 const push = spawnSync(process.execPath,
@@ -259,6 +298,22 @@ if (base) {
   console.log(`    ${dim('NEARLY_URL_BASE=https://your-host/records nearly')}`);
 }
 for (const n of notes) console.log(`  ${dim('·')} ${dim(n)}`);
+
+if (port?.replaced) {
+  console.log(`  ${ok('·')} ${dim('replaced an older Nearly server that was holding the port')}`);
+} else if (port?.busy) {
+  console.log('');
+  console.log(`  ${bold('Another Nearly server is on this port and someone is deciding something.')}`);
+  console.log(dim(`  Left it alone. Run this again once that request has been answered.`));
+} else if (port?.stuck) {
+  console.log('');
+  console.log(`  ${bold(`An older Nearly server is holding port ${PORT}.`)}`);
+  console.log(dim(`  It is running from ${port.from},`));
+  console.log(dim('  it cannot be asked to stop, and until it goes it answers instead of this one —'));
+  console.log(dim('  which is why its record pages 404 and why upgrades seem to do nothing.'));
+  console.log('');
+  console.log(`  ${dim('Stop it with:')}  ${port.how}`);
+}
 
 // An agent you have on this machine but have not used here is worth a word, and
 // nothing more: having it installed is no reason to write files into this repo.

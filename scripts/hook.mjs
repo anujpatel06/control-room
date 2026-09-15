@@ -25,6 +25,7 @@
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { byId } from '../server/adapters.mjs';
 
 const HOST = '127.0.0.1';
@@ -49,12 +50,39 @@ const body = await new Promise((r) => {
   process.stdin.on('error', () => r(''));
 });
 
+const realRoot = (() => { try { return realpathSync(root); } catch { return root; } })();
+
+// Is the thing on this port *us*?
+//
+// A hook starts the server and the server outlives the run. So after an upgrade
+// — or after a one-off `npx nearly-cli` — the old build keeps the port and keeps
+// answering, from a directory that may not exist any more. Its record pages 404
+// and every fix since is invisible, with nothing anywhere saying why. Reported
+// from a Windows machine where an npx-cache server had been squatting for days.
 async function up(ms = 400) {
   try {
-    const c = AbortSignal.timeout(ms);
-    const r = await fetch(`${BASE}/health`, { signal: c });
-    return r.ok;
+    const r = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(ms) });
+    if (!r.ok) return false;
+    const h = await r.json().catch(() => ({}));
+    // No root at all means a build from before this check: stale by definition.
+    if (h.root !== realRoot) return 'stale';
+    return true;
   } catch { return false; }
+}
+
+// Ask the old one to stand down. It refuses while somebody is mid-decision,
+// which is right: those requests are being held for a human and dropping them
+// would hand each one back to the agent's own prompt.
+async function replace() {
+  try {
+    const r = await fetch(`${BASE}/exit`, { method: 'POST', signal: AbortSignal.timeout(2000) });
+    if (r.status === 409) return false;          // in use; leave it alone
+  } catch { return false; }
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    if (await up(200) === false) return true;    // port is free
+  }
+  return false;
 }
 
 async function start() {
@@ -70,7 +98,10 @@ async function start() {
   return false;
 }
 
-if (!(await up()) && !(await start())) process.exit(0);   // fail open, silently
+let health = await up();
+if (health === 'stale' && await replace()) health = false;   // ours can have the port
+if (health === 'stale') health = true;                       // in use by a human; talk to it anyway
+if (!health && !(await start())) process.exit(0);            // fail open, silently
 
 // PreToolUse can hold for as long as the server is willing to wait for a human.
 // Everything else should be quick; keep it short so a wedged endpoint cannot

@@ -20,6 +20,19 @@ const WORKTREES = path.join(paths.workspace(), '.worktrees');
 const RECORDINGS = paths.recordings();
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
+// Which build is actually answering on this port. A server started by a hook
+// outlives the run that started it, so after an upgrade the old one keeps the
+// port and keeps serving its own code — and every fix stays invisible. Say who
+// we are so the launcher can tell.
+const VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; }
+  catch { return '0.0.0'; }
+})();
+// Idle since the last request. A server nobody is using should not hold a port
+// for the rest of the week, least of all one running from a cache directory
+// that npm may already have deleted.
+const IDLE_EXIT_MS = Number(process.env.NEARLY_IDLE_EXIT_MS || 30 * 60_000);
+let lastSeen = Date.now();
 const ASK_TIMEOUT_MS = Number(process.env.NEARLY_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
 const HOOK_TIMEOUT_S = 180;             // Claude Code's own hook timeout; must be > ASK_TIMEOUT
 const MODEL = 'sonnet';
@@ -358,7 +371,10 @@ function readBody(req) {
   return new Promise((resolve) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); });
 }
 
+const realRoot = (() => { try { return fs.realpathSync(ROOT); } catch { return ROOT; } })();
+
 const server = http.createServer(async (req, res) => {
+  lastSeen = Date.now();
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
   const sidParam = url.searchParams.get('s');
 
@@ -470,7 +486,20 @@ const server = http.createServer(async (req, res) => {
 
   // ---- UI API ----
   // Cheap liveness check: the hook launcher calls this before every tool call.
-  if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, sessions: sessions.size });
+  if (req.method === 'GET' && url.pathname === '/health') {
+    return json(res, 200, { ok: true, sessions: sessions.size, version: VERSION, root: realRoot });
+  }
+  // Stand down so a newer build can take the port. Refused while anybody is
+  // waiting on a decision: dropping a held request would hand it back to the
+  // agent's own prompt, which is the one outcome this whole project exists to
+  // avoid.
+  if (req.method === 'POST' && url.pathname === '/exit') {
+    const waiting = [...sessions.values()].reduce((n, s) => n + s.pending.size, 0);
+    if (waiting) return json(res, 409, { ok: false, waiting });
+    json(res, 200, { ok: true, version: VERSION });
+    setTimeout(() => process.exit(0), 50);
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(fs.readFileSync(UI));
@@ -581,6 +610,15 @@ server.on('error', (e) => {
   console.error(`nearly: ${e.message}`);
   process.exit(1);
 });
+
+// Nothing to remember to shut down. A server with no sessions that nobody has
+// asked anything of for half an hour has no reason to still be holding a port.
+if (IDLE_EXIT_MS > 0) {
+  const idle = setInterval(() => {
+    if (sessions.size === 0 && Date.now() - lastSeen > IDLE_EXIT_MS) process.exit(0);
+  }, 60_000);
+  idle.unref();
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`nearly  http://${HOST}:${PORT}`);
