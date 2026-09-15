@@ -217,7 +217,7 @@
       <span class="chip mono" id="hName">—</span>
       <span class="chip mono" id="hModel">—</span>
     </div>
-    <div class="meta"><span id="hSup"></span><span id="hDate"></span><a href="../replay.html" id="hReplay">Full replay →</a></div>
+    <div class="meta"><span id="hSup"></span><span id="hDate"></span><a href="../" id="hReplay">All records →</a></div>
   </header>
 
   <div class="prog" id="prog" role="list" aria-label="Scenes"></div>
@@ -343,7 +343,7 @@ const render = {
       <div class="big-avatar">${esc(R.avatar)}</div>
       <h2 class="title" style="max-width:none">Every number here was computed.</h2>
       <div class="sub">Facts from the session recording. ${R.polished ? 'Sentences rewritten by a model; facts were not.' : 'No model wrote any of it.'}${R.voice ? ` Voice: macOS ${esc(R.voice)}.` : ''}</div>
-      <div class="links"><a href="../replay.html">Full replay</a><a href="https://github.com/" target="_blank" rel="noopener">Control Room</a></div>
+      <div class="links">${R.project ? `<a href="${esc(R.project)}" target="_blank" rel="noopener">How this was made</a>` : ''}<a href="../">All session records</a></div>
     </div>`,
 };
 

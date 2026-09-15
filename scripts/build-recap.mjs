@@ -164,6 +164,16 @@ function prettyInput(tool, input = {}) {
   return JSON.stringify(input, null, 2);
 }
 
+// Where this page says it came from. Read it rather than hard-code it, so a
+// fork's records point at the fork.
+function projectUrl() {
+  try {
+    const u = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).homepage
+           || JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository?.url;
+    return u ? String(u).replace(/\.git$/, '') : null;
+  } catch { return null; }
+}
+
 function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   const created = events.find((e) => e.type === 'session' && e.subtype === 'created');
   const init = events.find((e) => e.type === 'init');
@@ -372,6 +382,7 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   return {
     id, name, branch: created?.branch, runs: sbRuns, cwd: worktree || null, attached: !!created?.attached, model, date: dateStr, startedAt: t0, durationS: durS,
     humanWaitS: humanWaitMs / 1000, avatar: AVATAR, author: AUTHOR, audience: AUDIENCE, supervisor: AUTHOR, voice: noAudio ? null : VOICE,
+    project: projectUrl(),
     generatedAt: new Date().toISOString(), scenes,
   };
 }

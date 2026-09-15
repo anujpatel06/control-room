@@ -15,7 +15,8 @@
   "audience": "reviewer",
   "supervisor": "Anuj",
   "voice": "Samantha",
-  "generatedAt": "2026-09-15T14:38:26.630Z",
+  "project": "https://anujpatel06.github.io/control-room/",
+  "generatedAt": "2026-09-15T15:07:13.815Z",
   "scenes": [
     {
       "kind": "cover",
@@ -57,8 +58,8 @@
         ]
       ],
       "narration": "Agent tempo ran for 44 seconds under Anuj's supervision. 5 tool calls, 3 held for a decision, 1 refused.",
-      "durS": 7.856825,
-      "audioS": 7.056825
+      "durS": 8.401088,
+      "audioS": 7.601088
     },
     {
       "kind": "intent",
@@ -66,8 +67,8 @@
       "ordinal": null,
       "of": null,
       "narration": "The task Anuj gave it, word for word: In this repo: 1) read archive.js and tasks.js, 2) use the Edit tool to add a JSDoc comment above the archived function explaining what it returns, 3)…",
-      "durS": 12.656916,
-      "audioS": 11.856916
+      "durS": 13.583039000000001,
+      "audioS": 12.783039
     },
     {
       "kind": "quiet",
@@ -82,8 +83,8 @@
         }
       ],
       "narration": "2 read-only steps ran without asking: Read. Logged, not gated.",
-      "durS": 4.784535,
-      "audioS": 3.984535
+      "durS": 5.3278,
+      "audioS": 4.5278
     },
     {
       "kind": "decision",
@@ -99,8 +100,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to edit archive.js. Anuj allowed it after 1.3 seconds.",
-      "durS": 5.047347,
-      "audioS": 4.247347
+      "durS": 5.615102,
+      "audioS": 4.815102
     },
     {
       "kind": "decision",
@@ -116,8 +117,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: node --check archive.js. Anuj allowed it after 2.5 seconds.",
-      "durS": 6.603084,
-      "audioS": 5.803084
+      "durS": 7.286938999999999,
+      "audioS": 6.486939
     },
     {
       "kind": "decision",
@@ -133,8 +134,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: rm tasks.js. Anuj said no after 2.9 seconds. The agent saw the refusal as an error and carried on without it.",
-      "durS": 9.308209000000002,
-      "audioS": 8.508209
+      "durS": 10.201043,
+      "audioS": 9.401043
     },
     {
       "kind": "diff",
@@ -154,8 +155,8 @@
         "total": 12
       },
       "narration": "That round of work changed 1 file: 3 lines added, 0 removed.",
-      "durS": 4.8517909999999995,
-      "audioS": 4.051791
+      "durS": 5.175329,
+      "audioS": 4.375329
     },
     {
       "kind": "outcome",
@@ -170,16 +171,17 @@
       ],
       "head": null,
       "narration": "The agent reported: The deletion was denied, so I'll stop there rather than retry it. Summary: I added a JSDoc comment above `archived()` in archive.js documenting its r… Read that with a caveat: 1 requested step never ran. 1 was refused by Anuj.",
-      "durS": 15.742086,
-      "audioS": 14.942086
+      "durS": 17.145261,
+      "audioS": 16.345261
     },
     {
       "kind": "credits",
       "narration": "That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.",
-      "durS": 6.929796,
-      "audioS": 6.129796
+      "durS": 7.636463,
+      "audioS": 6.836463
     }
   ],
   "kind": "branch",
-  "totalS": 73.780589
+  "readAloud": 0,
+  "totalS": 80.37206400000001
 }
