@@ -49,7 +49,12 @@ lines.push(sb.runs > 1
 lines.push('');
 lines.push(urlBase
   ? `**[Watch the record (${mmss(sb.totalS)})](${urlBase}/${slug}.html)** · ${sb.runs > 1 ? `${sb.runs} agent sessions` : `agent \`${sb.name}\``} · ${sb.model} · ${sb.date}`
-  : `Record: \`ui/records/${slug}.html\` in the Nearly checkout (${mmss(sb.totalS)}, not hosted yet) · ${sb.runs > 1 ? `${sb.runs} agent sessions` : `agent \`${sb.name}\``} · ${sb.model} · ${sb.date}`);
+  // No host configured. Everything a reviewer needs to act on is in this
+  // comment already — what was refused, and what the diff therefore cannot show
+  // them. Only the player is missing, so say where it is honestly rather than
+  // naming a path from the developer's own checkout that means nothing to
+  // anybody who installed this.
+  : `${sb.runs > 1 ? `${sb.runs} agent sessions` : `Agent \`${sb.name}\``} · ${sb.model} · ${sb.date} · ${mmss(sb.totalS)} recording, kept on the author's machine`);
 lines.push('');
 if (outcome?.notDone?.length) {
   lines.push(`> **${outcome.notDone.length} thing${outcome.notDone.length > 1 ? 's' : ''} the agent wanted to do did not happen.** The diff cannot show you this.`);
@@ -67,7 +72,7 @@ sb.scenes.forEach((s, i) => { lines.push(`${i + 1}. **${s.kind}** — ${s.narrat
 lines.push('');
 lines.push('</details>');
 lines.push('');
-lines.push(`<sub>Every number above was computed from the session recording. ${sb.polished ? 'Sentences were rewritten by a model; facts were not.' : 'No model wrote any of it.'}</sub>`);
+lines.push(`<sub>Every number above was computed from the session recording. ${sb.polished ? 'Sentences were rewritten by a model; facts were not.' : 'No model wrote any of it.'}${urlBase ? '' : ' The narrated version is not published anywhere; `nearly publish` puts it on GitHub Pages.'}</sub>`);
 // A hidden marker so we can find our own comment again on the next push and
 // edit it, instead of stacking a new one on every push until nobody reads any.
 // Deliberately carries no product name. This string is how a comment is
