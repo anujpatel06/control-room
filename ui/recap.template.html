@@ -342,6 +342,7 @@ const render = {
     <div class="scene-inner credits" style="display:flex;flex-direction:column;flex:1">
       <div class="big-avatar">${esc(R.avatar)}</div>
       <h2 class="title" style="max-width:none">Every number here was computed.</h2>
+      ${R.dropped ? `<div class="sub" style="color:var(--deny)">${R.dropped} line${R.dropped > 1 ? 's' : ''} of the recording could not be read, so this record may be missing events. Treat the counts as a floor, not a total.</div>` : ''}
       <div class="sub">Facts from the session recording. ${R.polished ? 'Sentences rewritten by a model; facts were not.' : 'No model wrote any of it.'}${R.voice ? ` Voice: macOS ${esc(R.voice)}.` : ''}</div>
       <div class="links">${R.project ? `<a href="${esc(R.project)}" target="_blank" rel="noopener">How this was made</a>` : ''}<a href="../">All session records</a></div>
     </div>`,

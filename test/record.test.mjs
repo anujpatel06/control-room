@@ -219,3 +219,36 @@ test('a repo reached by a symlinked path is still found', async () => {
   assert.equal(r.status, 0, `the same directory by another name must still match: ${r.stderr}`);
   assert.match(r.stdout, /1 session/);
 });
+
+test('a truncated recording is declared, not papered over', async () => {
+  // Recordings are appended to as a session runs, so a crash or a full disk
+  // leaves a half-written last line. Dropping it silently would let the page
+  // report one refusal when three more were never written down, and a record
+  // that overstates its own completeness is worse than no record at all.
+  const { writeFileSync, readFileSync: rf } = await import('node:fs');
+  const recs = mkdtempSync(join(tmpdir(), 'cr-trunc-'));
+  const repo = mkdtempSync(join(tmpdir(), 'cr-trunc-repo-'));
+  const sid = 'bbbbbbbb-1111-4222-8333-bbbbbbbbbbbb';
+  const now = Date.now();
+  const good = [
+    { type: 'session', subtype: 'created', name: 't', branch: 'feat/trunc', worktree: repo, attached: true, session: sid, at: now },
+    { type: 'prompt', text: 'go', session: sid, at: now + 1 },
+    { type: 'decision', id: 'd1', decision: 'deny', why: 'human deny (once)', scope: 'once', tool: 'Bash', key: 'Bash:rm', waitedMs: 500, input: { command: 'rm a' }, session: sid, at: now + 2 },
+  ].map((l) => JSON.stringify(l)).join('\n');
+  writeFileSync(join(recs, `${sid}.jsonl`), good + '\n{"type":"decision","id":"d2","deci');
+
+  const r = spawnSync(process.execPath, [
+    join(root, 'scripts', 'build-recap.mjs'), '--branch', 'feat/trunc', '--repo', repo, '--no-audio',
+  ], {
+    cwd: root, encoding: 'utf8', timeout: 60_000,
+    env: { ...process.env, NEARLY_RECORDINGS: recs, NEARLY_OUT: out, NEARLY_STORY: story },
+  });
+  assert.equal(r.status, 0, 'a damaged recording should still produce what it can');
+  assert.match(r.stderr, /unreadable line/i, 'and must say so on the way past');
+
+  const sb = JSON.parse(rf(join(story, 'cr-trunc-repo-'.length ? readdirSync(story).find((f) => f.includes('feat-trunc')) : ''), 'utf8'));
+  assert.equal(sb.dropped, 1, 'the count of unreadable lines is carried into the record');
+  const html = rf(join(out, `${readdirSync(out).find((f) => f.includes('feat-trunc'))}`), 'utf8');
+  assert.match(html, /could not be read/i, 'and the page tells the reviewer');
+  assert.match(html, /floor, not a total/i);
+});

@@ -12,7 +12,6 @@
     "server",
     "ui/index.html",
     "ui/recap.template.html",
-    "ui/replay.template.html",
     "README.md",
     "STUDY.md"
   ],

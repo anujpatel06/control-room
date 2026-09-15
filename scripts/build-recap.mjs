@@ -70,11 +70,22 @@ function loadRecording(idOrLatest) {
     file = files.find((f) => f.startsWith(idOrLatest));
     if (!file) throw new Error(`no recording starting with ${idOrLatest}`);
   }
-  const events = readFileSync(join(recordingsDir, file), 'utf8')
-    .split('\n').filter(Boolean)
-    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-    .filter(Boolean);
-  return { id: file.replace(/\.jsonl$/, ''), events };
+  const { events, dropped } = parseRecording(join(recordingsDir, file));
+  return { id: file.replace(/\.jsonl$/, ''), events, dropped };
+}
+
+// A recording is appended to as a session runs, so a crash, a full disk or a
+// kill leaves a half-written last line. Dropping it silently would let the page
+// report "1 action never happened" when three more were never written down, and
+// a record that overstates its own completeness is worse than no record.
+function parseRecording(path) {
+  const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean);
+  const events = [];
+  let dropped = 0;
+  for (const l of lines) {
+    try { events.push(JSON.parse(l)); } catch { dropped += 1; }
+  }
+  return { events, dropped };
 }
 
 // A branch is what gets reviewed, not a session. One branch collects several
@@ -94,15 +105,12 @@ function loadBranch(branch, repo) {
   const want = repo || null;
   const runs = [];
   for (const f of readdirSync(recordingsDir).filter((f) => f.endsWith('.jsonl'))) {
-    const events = readFileSync(join(recordingsDir, f), 'utf8')
-      .split('\n').filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter(Boolean);
+    const { events, dropped } = parseRecording(join(recordingsDir, f));
     if (!events.length) continue;
     const c = events.find((e) => e.type === 'session' && e.subtype === 'created');
     if (!c || c.branch !== branch) continue;
     if (want && c.worktree && !samePath(c.worktree, want)) continue;
-    runs.push({ id: f.replace(/\.jsonl$/, ''), at: events[0].at, events, created: c });
+    runs.push({ id: f.replace(/\.jsonl$/, ''), at: events[0].at, events, created: c, dropped });
   }
   if (!runs.length) throw new Error(`no recordings on branch "${branch}"${repo ? ` in ${repo}` : ''}`);
   runs.sort((a, b) => a.at - b.at);
@@ -110,7 +118,8 @@ function loadBranch(branch, repo) {
   runs.forEach((r, i) => {
     for (const e of r.events) events.push(i === 0 ? e : { ...e, _run: i });
   });
-  return { id: runs[0].id, events, branch, runs: runs.length, repo: runs[0].created.worktree };
+  const dropped = runs.reduce((n, r) => n + (r.dropped || 0), 0);
+  return { id: runs[0].id, events, branch, runs: runs.length, repo: runs[0].created.worktree, dropped };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +396,7 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   scenes.push({
     kind: 'credits',
     narration: `That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.`,
+    incompleteNote: true,
   });
 
   return {
@@ -591,6 +601,11 @@ function writeScript(sb, slug) {
 // ---------------------------------------------------------------------------
 const rec = BRANCH ? loadBranch(BRANCH, REPO) : loadRecording(target);
 const sb = buildStoryboard(rec);
+sb.dropped = rec.dropped || 0;
+if (sb.dropped) {
+  console.warn(`WARNING: ${sb.dropped} unreadable line(s) in the recording.`);
+  console.warn('  The record says so on the page: it cannot claim to be complete.');
+}
 if (BRANCH) { sb.kind = 'branch'; sb.branch = BRANCH; sb.name = basename(rec.repo || '') || sb.name; }
 else sb.kind = 'session';
 

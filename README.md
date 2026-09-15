@@ -243,7 +243,6 @@ The claim this project makes is testable: a reviewer who sees the session record
 - `ui/index.html`, sessions, triage of pending approvals, rules, log
 - `scripts/attach.mjs`, install or remove the hooks in a repo of your own; `scripts/post-recap.mjs`, comment the recap on its PR
 - `scripts/build-recap.mjs` + `ui/recap.template.html`, narrated recap page per session
-- `scripts/build-replay.mjs` + `ui/replay.template.html`, full event-level replay
 - `scripts/publish-pages.mjs`, build the `docs/` folder GitHub Pages serves
 - `scripts/install-push-hook.mjs` + `scripts/push-record.mjs`, hand the branch record over at `git push`
 - `workspace/`, the repo agents work on (seeded with the Tempo demo)
