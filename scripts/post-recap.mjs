@@ -69,7 +69,11 @@ lines.push('');
 lines.push(`<sub>Every number above was computed from the session recording. ${sb.polished ? 'Sentences were rewritten by a model; facts were not.' : 'No model wrote any of it.'}</sub>`);
 // A hidden marker so we can find our own comment again on the next push and
 // edit it, instead of stacking a new one on every push until nobody reads any.
-const MARKER = '<!-- nearly:session-record -->';
+// Deliberately carries no product name. This string is how a comment is
+// recognised as ours on every future push, so renaming the project must not
+// orphan every comment already posted. LEGACY covers ones posted before this.
+const MARKER = '<!-- x-session-record -->';
+const LEGACY = ['<!-- nearly:session-record -->', '<!-- control-room:session-record -->'];
 const body = `${MARKER}\n${lines.join('\n')}`;
 
 if (dry) { console.log(body); process.exit(0); }
@@ -79,10 +83,14 @@ if (!cwd) { console.error('storyboard has no repo path; cannot find the pull req
 
 const gh = (args, opts = {}) => spawnSync('gh', args, { cwd, encoding: 'utf8', ...opts });
 
-// Which pull request, and in which repository
-const view = gh(['pr', 'view', '--json', 'number,url']);
+// Which pull request, and in which repository.
+//
+// Ask for the record's own branch rather than whatever happens to be checked
+// out. You should be able to hand over a branch's record from anywhere in the
+// repo, and days after you moved on from it.
+const view = gh(['pr', 'view', ...(sb.branch ? [sb.branch] : []), '--json', 'number,url']);
 if (view.status !== 0) {
-  console.error(`no open pull request for this branch in ${cwd}`);
+  console.error(`no open pull request for ${sb.branch ? `"${sb.branch}"` : 'this branch'} in ${cwd}`);
   console.error((view.stderr || view.stdout || '').trim().split('\n')[0]);
   process.exit(1);
 }
@@ -96,8 +104,9 @@ writeFileSync(tmp, body);
 
 // Already posted one? Edit it. A branch gets pushed many times, and the reviewer
 // should see the current state, not a stack of stale records.
+const anyMarker = [MARKER, ...LEGACY].map((m) => `(.body | contains("${m}"))`).join(' or ');
 const mine = gh(['api', `repos/${nwo}/issues/${number}/comments`, '--paginate',
-                 '--jq', `[.[] | select(.body | contains("${MARKER}")) | .id] | first`]);
+                 '--jq', `[.[] | select(${anyMarker}) | .id] | first`]);
 const existing = (mine.stdout || '').trim();
 
 let r;

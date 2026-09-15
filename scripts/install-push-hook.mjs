@@ -29,6 +29,9 @@ if (!existsSync(join(repo, '.git'))) {
   console.error(`${repo} is not a git repository`);
   process.exit(1);
 }
+// Stable across renames on purpose: this string is how a hook is identified as
+// ours years from now, so it must never carry the product name.
+const MARKER = 'x-session-record-hook';
 const hooksDir = join(repo, '.git', 'hooks');
 const hookPath = join(hooksDir, 'pre-push');
 
@@ -40,7 +43,10 @@ if (remove) {
 
 if (existsSync(hookPath)) {
   const existing = readFileSync(hookPath, 'utf8');
-  if (!existing.includes('nearly')) {
+  // Recognise it by a marker that does not change when the product is renamed,
+  // and still recognise hooks written before this file existed.
+  const mine = existing.includes(MARKER) || /control-room|nearly/.test(existing);
+  if (!mine) {
     console.error(`${hookPath} already exists and was not written by the Nearly.`);
     console.error('Refusing to overwrite it. Move it aside, or add this line to it yourself:');
     console.error(`  node ${join(root, 'scripts', 'push-record.mjs')} "${repo}" || true`);
@@ -50,6 +56,7 @@ if (existsSync(hookPath)) {
 
 mkdirSync(hooksDir, { recursive: true });
 writeFileSync(hookPath, `#!/bin/sh
+# ${MARKER}
 # nearly: hand the session record over at push time.
 # Never blocks the push; "exit 0" at the end is the whole safety story.
 #

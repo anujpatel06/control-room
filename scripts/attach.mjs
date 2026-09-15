@@ -120,7 +120,17 @@ function pagesUrl() {
     return `https://${m[1].toLowerCase()}.github.io/${m[2]}/records`;
   } catch { return null; }
 }
-const base = process.env.NEARLY_URL_BASE || pagesUrl();
+// An address already configured wins: it was either set deliberately or worked
+// out here before, and it survives the project being renamed.
+function configured() {
+  try {
+    const f = join(root, '.nearly.json');
+    if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8')).urlBase || null;
+  } catch { /* fall through */ }
+  return null;
+}
+const derived = pagesUrl();
+const base = process.env.NEARLY_URL_BASE || configured() || derived;
 if (base && !off) {
   try {
     const cfg = join(root, '.nearly.json');
@@ -143,7 +153,15 @@ console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)
 console.log('');
 console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
-console.log(`  ${ok('·')} ${base ? `records publish to ${base}` : dim('records stay on this machine — see “Publish the records” in the README')}`);
+if (base) {
+  console.log(`  ${ok('·')} records publish to ${base}`);
+} else {
+  // Only reachable from a clone of the upstream repo, where publishing needs a
+  // fork the person actually controls.
+  console.log(`  ${ok('·')} ${dim('records stay on this machine')}`);
+  console.log(`    ${dim('to publish them, fork this repo, turn on GitHub Pages, then:')}`);
+  console.log(`    ${dim('NEARLY_URL_BASE=https://<you>.github.io/<fork>/records nearly')}`);
+}
 console.log('');
 console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);
 console.log(dim('  Nothing to leave running. Turn it off again with --off.'));
