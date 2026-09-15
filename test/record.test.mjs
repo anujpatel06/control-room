@@ -189,3 +189,33 @@ test('the auto-built record reports a link, not a null', async () => {
     rmSync(recs, { recursive: true, force: true });
   }
 });
+
+test('a repo reached by a symlinked path is still found', async () => {
+  // /tmp and /var are symlinks to /private/... on macOS, so the path recorded
+  // by the hook and the path passed on the command line spell the same
+  // directory differently. String comparison quietly matched nothing.
+  const { mkdirSync, symlinkSync, writeFileSync } = await import('node:fs');
+  const real = mkdtempSync(join(tmpdir(), 'cr-real-'));
+  const recs = mkdtempSync(join(tmpdir(), 'cr-symrec-'));
+  const link = join(mkdtempSync(join(tmpdir(), 'cr-link-')), 'via-link');
+  symlinkSync(real, link);
+
+  const now = Date.now();
+  const sid = 'aaaaaaaa-1111-4222-8333-aaaaaaaaaaaa';
+  const lines = [
+    { type: 'session', subtype: 'created', name: 'symtest', branch: 'feat/sym', worktree: real, attached: true, session: sid, at: now },
+    { type: 'prompt', text: 'do a thing', session: sid, at: now + 1 },
+    { type: 'decision', id: 'x', decision: 'deny', why: 'human deny (once)', scope: 'once', tool: 'Bash', key: 'Bash:rm', waitedMs: 900, input: { command: 'rm x' }, session: sid, at: now + 2 },
+    { type: 'session', subtype: 'exited', session: sid, at: now + 3 },
+  ];
+  writeFileSync(join(recs, `${sid}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+  const r = spawnSync(process.execPath, [
+    join(root, 'scripts', 'build-recap.mjs'), '--branch', 'feat/sym', '--repo', link, '--no-audio',
+  ], {
+    cwd: root, encoding: 'utf8', timeout: 60_000,
+    env: { ...process.env, NEARLY_RECORDINGS: recs, NEARLY_OUT: out, NEARLY_STORY: story },
+  });
+  assert.equal(r.status, 0, `the same directory by another name must still match: ${r.stderr}`);
+  assert.match(r.stdout, /1 session/);
+});

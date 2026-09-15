@@ -11,7 +11,7 @@
 // Principle: every number, diff and decision on screen is computed from the
 // recording. The language model, when used, only rewrites the sentences.
 
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync, rmSync, realpathSync } from 'node:fs';
 import { join, dirname, basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -80,8 +80,18 @@ function loadRecording(idOrLatest) {
 // A branch is what gets reviewed, not a session. One branch collects several
 // sessions over days; this merges every recording made on it into one record,
 // oldest first, so the reviewer opens a single link.
+// Two paths can name the same directory and not match as strings. On macOS
+// /var is a symlink to /private/var, so a repo under /tmp or /var is recorded
+// with one spelling and asked for with the other, and every session silently
+// belongs to nobody.
+function samePath(a, b) {
+  if (!a || !b) return false;
+  const real = (p) => { try { return realpathSync(resolve(p)); } catch { return resolve(p); } };
+  return real(a) === real(b);
+}
+
 function loadBranch(branch, repo) {
-  const want = repo ? resolve(repo) : null;
+  const want = repo || null;
   const runs = [];
   for (const f of readdirSync(recordingsDir).filter((f) => f.endsWith('.jsonl'))) {
     const events = readFileSync(join(recordingsDir, f), 'utf8')
@@ -91,7 +101,7 @@ function loadBranch(branch, repo) {
     if (!events.length) continue;
     const c = events.find((e) => e.type === 'session' && e.subtype === 'created');
     if (!c || c.branch !== branch) continue;
-    if (want && c.worktree && resolve(c.worktree) !== want) continue;
+    if (want && c.worktree && !samePath(c.worktree, want)) continue;
     runs.push({ id: f.replace(/\.jsonl$/, ''), at: events[0].at, events, created: c });
   }
   if (!runs.length) throw new Error(`no recordings on branch "${branch}"${repo ? ` in ${repo}` : ''}`);
