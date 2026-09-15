@@ -160,6 +160,11 @@ for (const a of chosen) {
 // by simply turning Nearly on again.
 try {
   const f = paths.repos();
+  // On a machine that has never run Nearly, ~/.nearly does not exist yet and
+  // this write fails with ENOENT. It used to fail into a bare catch, so the
+  // list was silently never created and the dashboard could never offer a repo
+  // — invisible on every machine except a genuinely fresh one.
+  mkdirSync(dirname(f), { recursive: true });
   let list = [];
   try { list = JSON.parse(readFileSync(f, 'utf8')); } catch { /* first one */ }
   // Prune as we go: a repo that has been moved or deleted is noise in a list
@@ -167,7 +172,10 @@ try {
   list = list.filter((r) => r !== repo && existsSync(join(r, '.git')));
   if (!off) list.unshift(repo);
   writeFileSync(f, JSON.stringify(list.slice(0, 50), null, 2) + '\n');
-} catch { /* the dashboard still works without it */ }
+} catch (e) {
+  // Not fatal — the gate does not depend on it — but not silent either.
+  notes.push(`could not remember this repo for the dashboard: ${e.message}`);
+}
 
 // ---------------------------------------------------------------------------
 // git pre-push hook

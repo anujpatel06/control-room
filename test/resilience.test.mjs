@@ -309,3 +309,41 @@ test('a hook is never written to call a command that will not exist', async () =
     rmSync(fakeNpx, { recursive: true, force: true });
   }
 });
+
+test('the first repo on a machine is remembered, with no data directory yet', () => {
+  // The cold-install bug: ~/.nearly does not exist the first time anyone runs
+  // this, so writing the list failed with ENOENT into a bare catch. Every
+  // machine that had ever run Nearly before passed; a brand new one did not,
+  // which is the only kind of machine a new user has.
+  const repo = tempRepo();
+  const home = mkdtempSync(join(tmpdir(), 'nearly-fresh-'));
+  const list = join(home, 'never', 'made', 'repos.json');
+  try {
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo],
+      { encoding: 'utf8', env: { ...process.env, NEARLY_REPOS: list } });
+    assert.equal(r.status, 0);
+    assert.ok(existsSync(list), 'the repo list was never created');
+    assert.deepEqual(JSON.parse(readFileSync(list, 'utf8')), [repo]);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('turning it off forgets the repo again', () => {
+  const repo = tempRepo();
+  const home = mkdtempSync(join(tmpdir(), 'nearly-fresh-'));
+  const list = join(home, 'repos.json');
+  const run = (...extra) => spawnSync(process.execPath,
+    [join(root, 'scripts', 'attach.mjs'), repo, ...extra],
+    { encoding: 'utf8', env: { ...process.env, NEARLY_REPOS: list } });
+  try {
+    run();
+    assert.deepEqual(JSON.parse(readFileSync(list, 'utf8')), [repo]);
+    run('--off');
+    assert.deepEqual(JSON.parse(readFileSync(list, 'utf8')), [], 'a repo turned off is still offered');
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
