@@ -2,15 +2,52 @@
 
 **A pull request tells you what changed. This tells you what nearly happened.**
 
-When a coding agent writes a branch, the person who reviews it has no idea what the agent tried, what a human refused, or what got rolled back. The diff is the only thing that survives, and the diff is the one artifact that cannot show you any of it.
+When a coding agent writes a branch, the person reviewing it has no idea what the agent tried, what a human refused, or what got rolled back. The diff is the only thing that survives, and the diff is the one artifact that cannot show you any of it.
 
-Control Room gates a coding agent's actions so a human decides the risky ones, records every one of those decisions, and then turns the session into a short narrated page written for **the reviewer**, not for the person who was in the room. That page is a link. It goes on the pull request.
+Control Room holds an agent's risky actions until a human decides, records every one of those decisions, and turns the branch into a short narrated page written for **the reviewer**. That page is a link, and it goes on the pull request.
 
 ```
-agent acts  →  gate holds it  →  human decides  →  recording  →  session record  →  PR comment
-                                        ↑                              ↑
-                              the data nobody keeps          the artifact nobody ships
+you work normally  →  agent acts  →  risky action held  →  you decide
+                                                              ↓
+   reviewer opens the PR  ←  comment posted  ←  you push  ←  recorded
 ```
+
+## Look before you install anything
+
+Nothing to run. This is a real record from two real agent sessions on one branch:
+
+**[A branch where three things never happened →](https://anujpatel06.github.io/control-room/recaps/priya-app--feat-third-task.html)**
+
+Watch the first thirty seconds. The cover says what the diff cannot: an action the supervisor refused, a push policy blocked, and a file deletion refused. [Here is how it looks on the pull request.](https://github.com/anujpatel06/tempo-demo/pull/2)
+
+## Use it on your own repo
+
+Five commands, once. Node 18 or newer, and Claude Code already signed in.
+
+```bash
+git clone https://github.com/anujpatel06/control-room && cd control-room
+node server/index.mjs                              # leave this running
+```
+
+Then, in a second terminal, once per repo you want recorded:
+
+```bash
+node scripts/attach.mjs        ~/code/my-app       # gate and record its sessions
+node scripts/install-push-hook.mjs ~/code/my-app   # offer the record at git push
+export RECAP_URL_BASE=https://<you>.github.io/control-room/recaps
+```
+
+## Then work normally
+
+Nothing about how you work changes. Open the repo in VS Code or a terminal, start Claude Code, give it a task.
+
+1. **Reads run silently.** Anything that only looks at your code is allowed and logged.
+2. **Anything that changes or reaches out is held.** It appears at http://127.0.0.1:47653 with the command, what it can affect, and a countdown. Answer with `A` or `D`, or shift for always and never. Nobody answering means denied after two minutes.
+3. **The record builds itself** when the session ends.
+4. **At `git push`** the hook merges every session on that branch, prints what was refused, and asks whether to post it. Say no and the push just continues.
+5. **Your reviewer opens the pull request** and the record is there, as one comment that updates on every push rather than a new one each time.
+
+If the server is not running, Claude Code falls back to its own prompts and nothing breaks. Attach fails open on purpose.
 
 ## Why the gate is not the point
 
@@ -39,58 +76,21 @@ Every tool call passes through an HTTP `PreToolUse` hook to this server, which s
 
 Agents in lab mode are real Claude Code sessions (`claude -p`) on your Claude subscription, each in its own git worktree under `workspace/.worktrees/`. No API key, no paid infrastructure, anywhere in this project.
 
-## Run
+## What the record actually contains
+
+**Who it is for.** The reviewer, who was not in the room. So the narration names the supervisor rather than saying "you", and it leads with the actions that never happened. Pass `--audience supervisor` for the second-person version.
+
+Scene by scene: the task verbatim, every held request with the answer given and how long it took, each round of changes as a diff, anything rolled back, and one closing view of what was asked against what the agent claims it did. Every figure is computed from the recording.
+
+The push hook builds this for you. To build one by hand:
 
 ```bash
-node server/index.mjs
+node scripts/build-recap.mjs --branch feat/x --repo ~/code/my-app   # a branch
+node scripts/build-recap.mjs latest                                 # one session
+node scripts/build-recap.mjs latest --llm                           # Claude rewrites the sentences, never the facts
 ```
 
-Open http://127.0.0.1:47653, name an agent, give it a task in the workspace (the Tempo demo), and watch the "Needs you" column.
-
-## Why the hook must answer fast
-
-Claude Code treats a hook that times out, errors, or returns anything other than `200` with JSON as a non-blocking error and lets the tool call proceed. So this server always answers with JSON, holds "ask" calls for at most `ASK_TIMEOUT_MS`, and denies when nobody decides. The hook's own timeout is set longer than that.
-
-## Attach to the repo you already work in
-
-The launcher above is "lab mode": the Control Room starts agents itself. Most days you start Claude Code yourself, in a terminal or in VS Code. Attach mode gates and records those sessions too.
-
-```bash
-node server/index.mjs                          # keep running, in any terminal
-node scripts/attach.mjs ~/code/my-app          # once per repo; --detach to remove
-```
-
-That writes HTTP hooks into `my-app/.claude/settings.local.json` (Claude Code keeps that file out of git). From then on every Claude Code session in that repo:
-
-- sends each tool call through the same consent gradient; "ask" calls wait for you at http://127.0.0.1:47653 and Claude Code skips its own prompt when the Control Room answers
-- records the prompt, every decision, and each turn's working-tree diff into `recordings/`
-- builds a recap automatically when the session ends
-
-Differences from lab mode, on purpose: nothing is auto-committed on your branch, so there is no Undo button; the diff scene shows uncommitted changes instead. If the server is not running, Claude Code treats the hook as a non-blocking error and falls back to its own permission prompts, so attach fails open.
-
-To put the recap on the pull request for that branch, click **Post to PR** on the session card, or:
-
-```bash
-node scripts/post-recap.mjs latest --dry-run                       # see the comment
-node scripts/post-recap.mjs latest --url-base https://…/recaps     # gh pr comment, from your gh login
-```
-
-The comment carries the computed stats, every narration line, and the refused actions as text, plus a link to the page when `--url-base` (or `RECAP_URL_BASE`) says where `ui/recaps/` is hosted (GitHub Pages works). Posting is always a deliberate click or command; the server never posts on its own.
-
-## Recap: the session as a short narrated story
-
-> **Who it is for.** The recap is written for the *reviewer* — the person who opens a pull request an agent wrote and has to decide whether to trust it. They were not in the room, so the narration names the supervisor rather than saying "you", and it leads with the actions that never happened. Pass `--audience supervisor` for the second-person version.
-
-
-Mainframe-style "watch your agent work", built from the recording instead of a screen capture.
-
-```bash
-node scripts/build-recap.mjs latest            # or a session id prefix
-node scripts/build-recap.mjs latest --llm      # let Claude rewrite the sentences (needs `claude login`)
-node scripts/build-recap.mjs latest --no-audio --voice Daniel --avatar AP
-```
-
-Writes one self-contained file to `ui/recaps/<agent>-<id>.html` (served at `/recaps/…` by the server, and there is a **Recap** button on each session card). The page plays 8 to 12 scenes with captions and narration: the task verbatim, every ask card with the answer you gave and how long you took, each turn's diff, anything you undid (recovered from the worktree reflog, so the story stays honest), and intent versus outcome.
+Output is one self-contained HTML file in `ui/recaps/`, served at `/recaps/…` while the server runs.
 
 ### The voice
 
@@ -125,16 +125,7 @@ Rules the builder follows:
 
 ## The branch is the unit, not the session
 
-A reviewer opens a pull request, not a session. One branch collects several agent
-sessions over days, so the record they get merges all of them:
-
-```bash
-node scripts/build-recap.mjs --branch feat/third-task --repo ~/code/my-app
-```
-
-That writes `ui/recaps/<repo>--<branch>.html`: every instruction given, numbered in
-order, each session's decisions and diffs, and one closing view of what the branch
-asked for against what actually happened.
+A reviewer opens a pull request, not a session. One branch collects several agent sessions over days, so the record merges all of them, numbering each instruction in order. A branch record supersedes the per-session records inside it, so the published index never shows the same story twice.
 
 ## Hand it over at push time
 
@@ -178,6 +169,10 @@ node scripts/publish-pages.mjs --base https://<user>.github.io/<repo>
 ```
 
 That copies every built recap into `docs/recaps/` and writes `docs/index.html`, an index of the sessions on record. Commit `docs/`, then set **Settings → Pages → branch `main`, folder `/docs`**. Preview it locally first at http://127.0.0.1:47653/docs/ while the server is running.
+
+## Why the hook must answer fast
+
+Claude Code treats a hook that times out, errors, or returns anything other than `200` with JSON as a non-blocking error and lets the tool call proceed. So this server always answers with JSON, holds "ask" calls for at most `ASK_TIMEOUT_MS`, and denies when nobody decides. The hook's own timeout is set longer than that.
 
 ## Study
 
