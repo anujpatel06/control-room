@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const freePort = () => 48000 + Math.floor(Math.random() * 900);
@@ -187,7 +188,7 @@ test('the updater never delays an agent and never fails a command', async () => 
   // A dead network must not break the command it was attached to.
   const offline = spawnSync(process.execPath, ['--input-type=module', '-e', `
     global.fetch = () => Promise.reject(new Error('offline'));
-    const m = await import(${JSON.stringify(mod)});
+    const m = await import(${JSON.stringify(pathToFileURL(mod).href)});
     m.applyUpdate(await m.checkForUpdate());
     console.log('survived');
   `.trim()], { encoding: 'utf8', timeout: 20_000 });
@@ -197,7 +198,7 @@ test('the updater never delays an agent and never fails a command', async () => 
   // Turned off means off.
   const off = spawnSync(process.execPath, ['--input-type=module', '-e', `
     global.fetch = () => { throw new Error('should not have been called'); };
-    const m = await import(${JSON.stringify(mod)});
+    const m = await import(${JSON.stringify(pathToFileURL(mod).href)});
     console.log(JSON.stringify(await m.checkForUpdate()));
   `.trim()], { encoding: 'utf8', timeout: 20_000, env: { ...process.env, NEARLY_NO_UPDATE: '1' } });
   assert.equal(off.status, 0, off.stderr);
@@ -209,7 +210,7 @@ test('a major version is announced, never installed behind your back', async () 
   // before it is trusted, so the install is left to the person.
   const mod = join(root, 'scripts', 'update-check.mjs');
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    const m = await import(${JSON.stringify(mod)});
+    const m = await import(${JSON.stringify(pathToFileURL(mod).href)});
     m.applyUpdate({ name: 'nearly-cli', from: '0.9.0', to: '1.0.0', major: true, kind: 'global' });
   `.trim()], { encoding: 'utf8', timeout: 20_000 });
   assert.equal(r.status, 0, r.stderr);
@@ -226,7 +227,7 @@ test('a failed update says so rather than leaving you to assume', async () => {
   writeFileSync(join(fakeBin, 'npm'), '#!/bin/sh\nexit 1\n');
   spawnSync('chmod', ['+x', join(fakeBin, 'npm')]);
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    const m = await import(${JSON.stringify(mod)});
+    const m = await import(${JSON.stringify(pathToFileURL(mod).href)});
     m.applyUpdate({ name: 'nearly-cli', from: '0.1.0', to: '0.1.1', major: false, kind: 'global' });
   `.trim()], {
     encoding: 'utf8', timeout: 30_000,
@@ -258,7 +259,7 @@ test('an upgrade cannot destroy what was recorded', async () => {
 
   // Installed: everything lands in the user's own directory.
   const installed = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    const m = await import(${JSON.stringify(mod)});
+    const m = await import(${JSON.stringify(pathToFileURL(mod).href)});
     console.log(JSON.stringify({ root: m.dataRoot, rec: m.paths.recordings(), fromCheckout: m.fromCheckout }));
   `.trim()], {
     encoding: 'utf8', timeout: 20_000,
