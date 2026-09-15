@@ -16,11 +16,12 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { paths } from '../server/paths.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const storyDir = join(root, 'records');
-const builtDir = join(root, 'ui', 'records');
-const docsDir = join(root, 'docs');
+const storyDir = paths.records();
+const builtDir = paths.pages();
+const docsDir = paths.docs();
 const outRecaps = join(docsDir, 'records');
 
 const argv = process.argv.slice(2);

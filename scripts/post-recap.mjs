@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { paths } from '../server/paths.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -22,7 +23,7 @@ const ubIdx = argv.indexOf('--url-base');
 const urlBase = (ubIdx !== -1 ? argv[ubIdx + 1] : process.env.NEARLY_URL_BASE || '').replace(/\/$/, '');
 const target = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--url-base') || 'latest';
 
-const dir = join(root, 'records');
+const dir = paths.records();
 const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
 if (!files.length) { console.error('no storyboards in records/. Run build-recap first.'); process.exit(1); }
 let file;

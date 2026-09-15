@@ -248,3 +248,28 @@ test('an active user actually meets the updater', () => {
   // And it still must not be able to fail a push.
   assert.match(push, /catch \{[^}]*never worth failing a push/i);
 });
+
+test('an upgrade cannot destroy what was recorded', async () => {
+  // npm replaces the package directory wholesale on every install, so anything
+  // written there is gone after the next upgrade. Recordings are the one thing
+  // here that cannot be regenerated: every record, count and refusal is derived
+  // from them.
+  const mod = join(root, 'server', 'paths.mjs');
+
+  // Installed: everything lands in the user's own directory.
+  const installed = spawnSync(process.execPath, ['-e', `
+    const m = await import(${JSON.stringify(mod)});
+    console.log(JSON.stringify({ root: m.dataRoot, rec: m.paths.recordings(), fromCheckout: m.fromCheckout }));
+  `.trim()], {
+    encoding: 'utf8', timeout: 20_000,
+    env: { ...process.env, NEARLY_HOME: join(tmpdir(), 'nearly-home-test'), NEARLY_RECORDINGS: '', NEARLY_STORY: '', NEARLY_OUT: '' },
+  });
+  assert.equal(installed.status, 0, installed.stderr);
+  const got = JSON.parse(installed.stdout);
+  if (!got.fromCheckout) {
+    assert.doesNotMatch(got.rec, /node_modules/, 'never inside a directory npm replaces');
+  }
+
+  // Whichever it is, no path may sit inside node_modules.
+  assert.doesNotMatch(got.rec, /node_modules/);
+});

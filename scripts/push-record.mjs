@@ -10,6 +10,7 @@ import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { paths } from '../server/paths.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv[2] || '.');
@@ -55,7 +56,7 @@ if (build.status !== 0) {
 
 const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 const slug = `${safe(basename(repo))}--${safe(branch)}`;
-const storyPath = join(root, 'records', `${slug}.json`);
+const storyPath = join(paths.records(), `${slug}.json`);
 if (!existsSync(storyPath)) bail('record built but not found on disk');
 
 const sb = JSON.parse(readFileSync(storyPath, 'utf8'));

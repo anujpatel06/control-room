@@ -16,11 +16,12 @@ import { join, dirname, basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { paths } from '../server/paths.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const recordingsDir = process.env.NEARLY_RECORDINGS || join(root, 'recordings');
+const recordingsDir = paths.recordings();
 const templatePath = join(root, 'ui', 'recap.template.html');
-const outDir = process.env.NEARLY_OUT || join(root, 'ui', 'records');
+const outDir = paths.pages();
 
 // ---------------------------------------------------------------------------
 // args
@@ -635,7 +636,7 @@ if (!noAudio) {
 sb.totalS = sb.scenes.reduce((n, s) => n + s.durS, 0);
 
 mkdirSync(outDir, { recursive: true });
-const storyDirOut = process.env.NEARLY_STORY || join(root, 'records');
+const storyDirOut = paths.records();
 mkdirSync(storyDirOut, { recursive: true });
 const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 const slug = BRANCH ? `${safe(sb.name)}--${safe(BRANCH)}` : `${sb.name}-${sb.id.slice(0, 4)}`;

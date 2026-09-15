@@ -11,13 +11,14 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_TIER, ruleKey, classify as classifyWith } from './policy.mjs';
+import { paths } from './paths.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.NEARLY_PORT || 47653);
 const HOST = '127.0.0.1';
 const WORKSPACE = path.join(ROOT, 'workspace');
 const WORKTREES = path.join(WORKSPACE, '.worktrees');
-const RECORDINGS = process.env.NEARLY_RECORDINGS || path.join(ROOT, 'recordings');
+const RECORDINGS = paths.recordings();
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
 const ASK_TIMEOUT_MS = Number(process.env.NEARLY_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)

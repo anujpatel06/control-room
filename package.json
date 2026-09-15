@@ -1,6 +1,6 @@
 {
   "name": "nearly-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A pull request tells you what changed. Nearly tells you what nearly happened: the commands a human refused, the pushes policy blocked, the turns rolled back.",
   "type": "module",
   "bin": {
@@ -30,7 +30,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anujpatel06/nearly.git"
+    "url": "git+https://github.com/anujpatel06/nearly.git"
   },
   "homepage": "https://anujpatel06.github.io/nearly/",
   "scripts": {

@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { dataRoot } from '../server/paths.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
@@ -185,9 +186,9 @@ if (base) {
 } else {
   // Only reachable from a clone of the upstream repo, where publishing needs a
   // fork the person actually controls.
-  console.log(`  ${ok('·')} ${dim('records stay on this machine')}`);
-  console.log(`    ${dim('to publish them, fork this repo, turn on GitHub Pages, then:')}`);
-  console.log(`    ${dim('NEARLY_URL_BASE=https://<you>.github.io/<fork>/records nearly')}`);
+  console.log(`  ${ok('·')} ${dim(`records are kept in ${dataRoot.replace(process.env.HOME || '~', '~')}`)}`);
+  console.log(`    ${dim('to link them from a pull request, host that folder anywhere and:')}`);
+  console.log(`    ${dim('NEARLY_URL_BASE=https://your-host/records nearly')}`);
 }
 console.log('');
 console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);
