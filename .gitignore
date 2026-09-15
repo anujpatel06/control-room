@@ -8,3 +8,7 @@ workspace/
 # machine-local config, and build artifacts that embed local paths
 .nearly.json
 ui/replay.html
+
+# local dev-server config
+.claude/launch.json
+repos.json

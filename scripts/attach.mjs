@@ -22,7 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { dataRoot } from '../server/paths.mjs';
+import { dataRoot, paths } from '../server/paths.mjs';
 import { choose, installed as agentsOnMachine } from './detect.mjs';
 import { ADAPTERS } from '../server/adapters.mjs';
 
@@ -154,6 +154,20 @@ for (const a of chosen) {
     notes.push(`${a.name}: ${e.message}`);
   }
 }
+
+// Remember this repo, so the dashboard can offer it before anything has run in
+// it. A list of paths and nothing else: it is a convenience, and it is rebuilt
+// by simply turning Nearly on again.
+try {
+  const f = paths.repos();
+  let list = [];
+  try { list = JSON.parse(readFileSync(f, 'utf8')); } catch { /* first one */ }
+  // Prune as we go: a repo that has been moved or deleted is noise in a list
+  // whose only job is to offer you somewhere to start.
+  list = list.filter((r) => r !== repo && existsSync(join(r, '.git')));
+  if (!off) list.unshift(repo);
+  writeFileSync(f, JSON.stringify(list.slice(0, 50), null, 2) + '\n');
+} catch { /* the dashboard still works without it */ }
 
 // ---------------------------------------------------------------------------
 // git pre-push hook

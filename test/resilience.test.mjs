@@ -13,6 +13,10 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// attach remembers the repos it is turned on for, so the dashboard can offer
+// them. A test run must not add a dozen temporary directories to that list.
+const sandboxed = () => ({ ...process.env, NEARLY_REPOS: join(tmpdir(), `nearly-test-repos-${process.pid}.json`) });
 const freePort = () => 48000 + Math.floor(Math.random() * 900);
 
 function tempRepo() {
@@ -91,7 +95,7 @@ test('two servers racing for the port: the loser stands down quietly', async () 
 test('turning it on twice does not install anything twice', () => {
   const repo = tempRepo();
   try {
-    const run = () => spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    const run = () => spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     assert.equal(run().status, 0);
     const once = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'));
     assert.equal(run().status, 0);
@@ -104,9 +108,9 @@ test('turning it on twice does not install anything twice', () => {
 test('turning it off removes everything it put there', () => {
   const repo = tempRepo();
   try {
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     assert.ok(existsSync(join(repo, '.git', 'hooks', 'pre-push')));
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, '--off'], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, '--off'], { encoding: 'utf8', env: sandboxed() });
     const after = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'));
     assert.equal(after.hooks, undefined, 'no hooks left behind');
     assert.equal(existsSync(join(repo, '.git', 'hooks', 'pre-push')), false, 'no push hook left behind');
@@ -121,12 +125,12 @@ test('it leaves settings that were already there alone', () => {
     const mine = { permissions: { allow: ['Bash(ls:*)'] }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }] } };
     spawnSync('sh', ['-c', `cat > ${JSON.stringify(f)}`], { input: JSON.stringify(mine) });
 
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     const on = JSON.parse(readFileSync(f, 'utf8'));
     assert.deepEqual(on.permissions, mine.permissions, 'unrelated settings survive');
     assert.ok(on.hooks.Stop.some((m) => m.hooks.some((h) => h.command === 'echo theirs')), 'their hook survives');
 
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, '--off'], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, '--off'], { encoding: 'utf8', env: sandboxed() });
     const off = JSON.parse(readFileSync(f, 'utf8'));
     assert.deepEqual(off.permissions, mine.permissions);
     assert.ok(off.hooks.Stop.some((m) => m.hooks.some((h) => h.command === 'echo theirs')),
@@ -137,7 +141,7 @@ test('it leaves settings that were already there alone', () => {
 test('it will not attach to something that is not a repository', () => {
   const d = mkdtempSync(join(tmpdir(), 'cr-notrepo-'));
   try {
-    const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), d], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), d], { encoding: 'utf8', env: sandboxed() });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /not a git repository/);
   } finally { rmSync(d, { recursive: true, force: true }); }
@@ -146,7 +150,7 @@ test('it will not attach to something that is not a repository', () => {
 test('the push hook never blocks a push, whatever happens', () => {
   const repo = tempRepo();
   try {
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     const hook = readFileSync(join(repo, '.git', 'hooks', 'pre-push'), 'utf8');
     assert.match(hook, /\|\| true/, 'failures are swallowed');
     assert.match(hook, /exit 0\s*$/, 'and it always exits 0');
@@ -165,7 +169,7 @@ test('hooks resolve the command fresh, so upgrading reaches every repo', () => {
   // upgrades keeps running the old code everywhere and has no way to know.
   const repo = tempRepo();
   try {
-    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8' });
+    spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     const cmd = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'))
       .hooks.PreToolUse[0].hooks[0].command;
 
@@ -293,7 +297,7 @@ test('a hook is never written to call a command that will not exist', async () =
       // Only the disappearing shim and the system basics. A real `nearly`
       // installed on the machine running the tests would otherwise be found and
       // correctly trusted, hiding what this is checking.
-      env: { ...process.env, PATH: `${npxBin}:/usr/bin:/bin`, NEARLY_NO_INSTALL: '1' },
+      env: { ...sandboxed(), PATH: `${npxBin}:/usr/bin:/bin`, NEARLY_NO_INSTALL: '1' },
     });
     assert.equal(r.status, 0, r.stderr);
     const cmd = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'))

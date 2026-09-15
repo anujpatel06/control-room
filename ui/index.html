@@ -121,6 +121,7 @@
 
   /* ---------- fleet ---------- */
   .new { margin: 0 12px 14px; display: grid; gap: 7px; }
+  .formErr { margin: 0; font-size: 12px; line-height: 1.45; color: var(--deny); }
   .fleet { padding: 0 12px 18px; display: grid; gap: 8px; }
   .agent {
     background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r);
@@ -240,8 +241,11 @@
     <div class="col-h"><span class="lbl">Agents</span><span class="count" id="fleetCount">0</span></div>
     <form class="new" id="newForm">
       <input name="name" placeholder="Name, e.g. docs" required autocomplete="off">
-      <textarea name="prompt" placeholder="What should this agent do in the workspace?" required></textarea>
+      <input name="repo" id="repoField" placeholder="Repo to branch from" list="repoList" autocomplete="off">
+      <datalist id="repoList"></datalist>
+      <textarea name="prompt" placeholder="What should this agent do on that branch?" required></textarea>
       <button type="submit" data-v="primary">Start agent</button>
+      <p class="formErr" id="newErr" hidden></p>
     </form>
     <div class="fleet" id="sessions"></div>
   </div>
@@ -427,9 +431,9 @@
     if (ev.type === 'snapshot') {
       S.sessions.clear();
       for (const s of ev.sessions) S.sessions.set(s.id, s);
-      S.rules = ev.rules; S.defaults = ev.defaults;
+      S.rules = ev.rules; S.defaults = ev.defaults; S.repos = ev.repos || [];
       if (ev.askTimeoutMs) S.askTimeoutMs = ev.askTimeoutMs;
-      renderSessions(); renderAsks(); renderRules(); renderQuota();
+      renderSessions(); renderAsks(); renderRules(); renderQuota(); fillRepos();
       return;
     }
     if (ev.type === 'rules') { S.rules = ev.rules; renderRules(); return; }
@@ -440,7 +444,7 @@
     if (ev.type === 'decision') { s.pending = (s.pending || []).filter((p) => p.id !== ev.id); }
     if (ev.type === 'result') { s.turns = (s.turns || 0) + 1; s.state = 'idle'; }
     if (ev.type === 'session' && ev.subtype === 'exited') { s.state = 'exited'; s.pending = []; }
-    renderSessions(); renderAsks(); renderQuota(); logEvent(ev);
+    renderSessions(); renderAsks(); renderQuota(); fillRepos(); logEvent(ev);
   }
 
   function connect() {
@@ -454,9 +458,25 @@
   $('newForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const r = await post('/sessions', { name: f.get('name'), prompt: f.get('prompt') });
-    if (r.error) alert(r.error); else e.target.reset();
+    const err = $('newErr');
+    err.hidden = true;
+    const r = await post('/sessions', { name: f.get('name'), prompt: f.get('prompt'), repo: f.get('repo')?.trim() || undefined });
+    // Inline, not an alert. The reason a start failed is almost always something
+    // you fix in the form right here, and a modal you have to dismiss first puts
+    // the answer behind a click.
+    if (r.error) { err.textContent = r.error; err.hidden = false; }
+    else { e.target.reset(); fillRepos(); }
   };
+
+  // The repos you have attached are the ones worth offering, and if there is
+  // exactly one it is the answer, so fill it in rather than asking.
+  function fillRepos() {
+    const repos = S.repos || [];
+    $('repoList').innerHTML = repos.map((r) => `<option value="${esc(r)}">`).join('');
+    const field = $('repoField');
+    if (repos.length === 1 && !field.value) field.value = repos[0];
+    field.placeholder = repos.length ? 'Repo to branch from' : 'Run `nearly` in a repo first';
+  }
 
   document.body.addEventListener('click', async (e) => {
     const b = e.target.closest('button');

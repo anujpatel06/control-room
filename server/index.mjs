@@ -16,14 +16,17 @@ import { paths } from './paths.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.NEARLY_PORT || 47653);
 const HOST = '127.0.0.1';
-const WORKSPACE = path.join(ROOT, 'workspace');
-const WORKTREES = path.join(WORKSPACE, '.worktrees');
+const WORKTREES = path.join(paths.workspace(), '.worktrees');
 const RECORDINGS = paths.recordings();
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
 const ASK_TIMEOUT_MS = Number(process.env.NEARLY_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
 const HOOK_TIMEOUT_S = 180;             // Claude Code's own hook timeout; must be > ASK_TIMEOUT
 const MODEL = 'sonnet';
+// Overridable so the tests can exercise everything around starting an agent
+// without starting one, and so anyone whose binary is not called `claude` can
+// say so.
+const AGENT_CMD = process.env.NEARLY_AGENT_CMD || 'claude';
 const MAX_TURNS = '12';
 
 fs.mkdirSync(RECORDINGS, { recursive: true });
@@ -87,13 +90,54 @@ function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
-function createSession({ name, prompt }) {
+// The repo an agent started from the dashboard should branch from. There is no
+// such thing as a default one: this used to assume a `workspace` folder beside
+// the code, which exists in a checkout and never exists when the tool is
+// installed from npm, so the button could only fail.
+function knownRepos() {
+  let listed = [];
+  try { listed = JSON.parse(fs.readFileSync(paths.repos(), 'utf8')); } catch { /* none yet */ }
+  const live = [...sessions.values()].filter((s) => s.attached && s.worktree).map((s) => s.worktree);
+  // A repo can be moved or deleted after it was turned on; offering one that is
+  // no longer there would just move the failure later.
+  return [...new Set([...live, ...listed])].filter((r) => fs.existsSync(path.join(r, '.git')));
+}
+
+function resolveRepo(given) {
+  // Nothing given: the repos you have turned Nearly on for are the ones you work
+  // in, so they are the only sensible guess. One is a default; several are a
+  // question, and guessing between them would branch the wrong project.
+  const candidates = given ? [path.resolve(given)] : knownRepos();
+
+  if (!candidates.length) {
+    throw new Error('No repo to start from. Run `nearly` in the repo you want, then try again — or give a path.');
+  }
+  if (!given && candidates.length > 1) {
+    throw new Error(`Several repos are attached. Say which one: ${candidates.join(', ')}`);
+  }
+  const repo = candidates[0];
+  if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`${repo} is not a git repository.`);
+  try {
+    // An unborn HEAD is the other way this failed: git cannot branch from a repo
+    // with no commits, and "invalid reference: main" explained none of that.
+    git(repo, ['rev-parse', 'HEAD']);
+  } catch {
+    throw new Error(`${repo} has no commits yet. Make one, then start an agent from it.`);
+  }
+  return repo;
+}
+
+function createSession({ name, prompt, repo: repoArg }) {
   if (sessions.size >= MAX_SESSIONS) throw new Error(`max ${MAX_SESSIONS} sessions on this machine`);
+  const repo = resolveRepo(repoArg);
   const id = randomUUID();
   const safe = String(name || 'agent').replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'agent';
-  const branch = `cr/${safe}-${id.slice(0, 4)}`;
+  const branch = `nearly/${safe}-${id.slice(0, 4)}`;
   const worktree = path.join(WORKTREES, `${safe}-${id.slice(0, 4)}`);
-  git(WORKSPACE, ['worktree', 'add', '-B', branch, worktree, 'main']);
+  // HEAD, not `main`: branch from where the person actually is. Hardcoding the
+  // branch name broke every repo on master, every repo mid-feature, and every
+  // repo that had simply never been called main.
+  git(repo, ['worktree', 'add', '-B', branch, worktree, 'HEAD']);
 
   const settingsPath = path.join(worktree, '.nearly-hooks.json');
   fs.writeFileSync(settingsPath, JSON.stringify(hooksSettings(id)));
@@ -111,12 +155,12 @@ function createSession({ name, prompt }) {
     '--max-turns', MAX_TURNS,
     '--name', safe,
   ];
-  const proc = spawn('claude', args, { cwd: worktree, stdio: ['pipe', 'pipe', 'pipe'] });
+  const proc = spawn(AGENT_CMD, args, { cwd: worktree, stdio: ['pipe', 'pipe', 'pipe'] });
   // An unhandled spawn error would take the whole server down and every other
   // session with it. The usual cause is Claude Code not being on PATH.
   proc.on('error', (e) => {
     const why = e.code === 'ENOENT'
-      ? 'Claude Code is not on PATH. Install it, or check `which claude`.'
+      ? `${AGENT_CMD} is not on PATH. Install Claude Code, or check \`which ${AGENT_CMD}\`.`
       : e.message;
     record(id, { type: 'stderr', text: `could not start the agent: ${why}` });
     s.state = 'exited';
@@ -127,8 +171,9 @@ function createSession({ name, prompt }) {
     id, name: safe, branch, worktree, proc, state: 'starting', turns: 0, lastText: '', currentTool: null,
     usage: null, rateLimit: null, pending: new Map(), events: [], startedAt: Date.now(), buf: '',
   };
+  s.repo = repo;
   sessions.set(id, s);
-  record(id, { type: 'session', subtype: 'created', name: safe, branch, worktree, prompt });
+  record(id, { type: 'session', subtype: 'created', name: safe, branch, worktree, repo, prompt });
 
   proc.stderr.on('data', (d) => record(id, { type: 'stderr', text: String(d).slice(0, 2000) }));
   proc.stdout.on('data', (d) => {
@@ -438,13 +483,13 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-    res.write(`data: ${JSON.stringify({ type: 'snapshot', sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', sessions: [...sessions.values()].map(summary), repos: knownRepos(), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS })}\n\n`);
     clients.add(res);
     req.on('close', () => clients.delete(res));
     return;
   }
   if (req.method === 'GET' && url.pathname === '/state') {
-    return json(res, 200, { sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS });
+    return json(res, 200, { sessions: [...sessions.values()].map(summary), repos: knownRepos(), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS });
   }
   if (req.method === 'GET' && url.pathname.startsWith('/recordings/')) {
     const id = url.pathname.split('/')[2];
@@ -455,7 +500,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const b = JSON.parse(await readBody(req) || '{}');
       if (!b.prompt) return json(res, 400, { error: 'prompt required' });
-      const s = createSession({ name: b.name, prompt: b.prompt });
+      const s = createSession({ name: b.name, prompt: b.prompt, repo: b.repo });
       return json(res, 200, summary(s));
     } catch (e) { return json(res, 400, { error: e.message }); }
   }
@@ -533,7 +578,7 @@ server.on('error', (e) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`nearly  http://${HOST}:${PORT}`);
-  console.log(`workspace     ${WORKSPACE}`);
+  console.log(`worktrees     ${WORKTREES}`);
   console.log(`recordings    ${RECORDINGS}`);
 });
 

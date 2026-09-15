@@ -210,7 +210,13 @@ Every tool call passes through an HTTP `PreToolUse` hook to this server, which s
 
 "Allow always" and "Never" turn a decision into a rule for the rest of the run, keyed by tool and first word of the command, or file extension for edits. In lab mode every turn is committed in the agent's worktree by the `Stop` hook, so **Undo turn** is a `git reset --hard HEAD~1`.
 
-Agents in lab mode are real Claude Code sessions (`claude -p`) on your Claude subscription, each in its own git worktree under `workspace/.worktrees/`. No API key, no paid infrastructure, anywhere in this project.
+Agents in lab mode are real Claude Code sessions (`claude -p`) on your Claude
+subscription, each on its own branch in its own git worktree. You pick which
+repo to branch from — the dashboard offers the ones you have turned Nearly on
+for — and the branch starts from that repo's HEAD, so it begins where you
+actually are rather than on some assumed `main`. Worktrees live under
+`~/.nearly/workspace/.worktrees/`, outside the installed package, so upgrading
+never deletes one. No API key, no paid infrastructure, anywhere in this project.
 
 ## What the record actually contains
 
@@ -362,6 +368,6 @@ The claim this project makes is testable: a reviewer who sees the session record
 - `scripts/build-recap.mjs` + `ui/recap.template.html`, narrated recap page per session
 - `scripts/publish-pages.mjs`, build the `docs/` folder GitHub Pages serves
 - `scripts/install-push-hook.mjs` + `scripts/push-record.mjs`, hand the branch record over at `git push`
-- `workspace/`, the repo agents work on (seeded with the Tempo demo)
+- `~/.nearly/`, where recordings, records and agent worktrees are kept
 - `recordings/<session>.jsonl`, every event and decision; `recordings/demo/` is committed so the records can be rebuilt from source
 - `STUDY.md`, the protocol for testing whether any of this helps a reviewer

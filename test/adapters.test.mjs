@@ -32,7 +32,7 @@ before(async () => {
   recordings = mkdtempSync(join(tmpdir(), 'nearly-adapters-'));
   server = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
     cwd: root, stdio: 'ignore',
-    env: { ...process.env, NEARLY_PORT: String(PORT), NEARLY_ASK_TIMEOUT_MS: '2000', NEARLY_RECORDINGS: recordings },
+    env: { ...process.env, NEARLY_PORT: String(PORT), NEARLY_ASK_TIMEOUT_MS: '2000', NEARLY_RECORDINGS: recordings, NEARLY_REPOS: join(recordings, 'repos.json') },
   });
   for (let i = 0; i < 50; i++) {
     try { if ((await fetch(`http://127.0.0.1:${PORT}/health`)).ok) return; } catch { /* not up yet */ }

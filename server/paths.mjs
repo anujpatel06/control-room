@@ -35,4 +35,14 @@ export const paths = {
   records: () => process.env.NEARLY_STORY || dataDir('records'),
   pages: () => process.env.NEARLY_OUT || (fromCheckout ? join(pkgRoot, 'ui', 'records') : dataDir('pages', 'records')),
   docs: () => (fromCheckout ? join(pkgRoot, 'docs') : dataDir('pages')),
+  // Worktrees for agents started from the dashboard. Same reasoning as
+  // recordings: installed from npm this used to land inside the package — under
+  // the npx cache, even — where git has no repository to branch from and an
+  // upgrade deletes whatever survived.
+  workspace: () => process.env.NEARLY_WORKSPACE || dataDir('workspace'),
+  // The repos `nearly` has been turned on for. Kept so the dashboard knows what
+  // you work in before any session has run in it — otherwise the only repos it
+  // can offer are ones that are already going, which is no help when you are
+  // trying to start the first one.
+  repos: () => process.env.NEARLY_REPOS || join(dataRoot, 'repos.json'),
 };
