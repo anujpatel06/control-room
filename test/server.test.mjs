@@ -32,7 +32,7 @@ before(async () => {
   recordings = mkdtempSync(join(tmpdir(), 'cr-test-'));
   server = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
     cwd: root, stdio: 'ignore',
-    env: { ...process.env, NEARLY_PORT: String(PORT), NEARLY_ASK_TIMEOUT_MS: String(ASK_TIMEOUT) },
+    env: { ...process.env, NEARLY_PORT: String(PORT), NEARLY_ASK_TIMEOUT_MS: String(ASK_TIMEOUT), NEARLY_RECORDINGS: recordings },
   });
   for (let i = 0; i < 50; i++) {
     try { if ((await fetch(`${BASE}/health`)).ok) return; } catch { /* not up yet */ }

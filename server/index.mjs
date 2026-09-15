@@ -17,7 +17,7 @@ const PORT = Number(process.env.NEARLY_PORT || 47653);
 const HOST = '127.0.0.1';
 const WORKSPACE = path.join(ROOT, 'workspace');
 const WORKTREES = path.join(WORKSPACE, '.worktrees');
-const RECORDINGS = path.join(ROOT, 'recordings');
+const RECORDINGS = process.env.NEARLY_RECORDINGS || path.join(ROOT, 'recordings');
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
 const ASK_TIMEOUT_MS = Number(process.env.NEARLY_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
@@ -205,7 +205,9 @@ function buildRecap(s, extraArgs = [], cb) {
   child.stderr.on('data', (d) => (err += d));
   child.on('exit', (code) => {
     if (code !== 0) return cb(new Error(err.trim().split('\n').at(-1) || `exit ${code}`));
-    const built = out.match(/Built ui(\/recaps\/[^\s]+\.html)/);
+    // The builder prints its own path. Parse the current name, and keep the old
+    // one working, because a scraped string is exactly what a rename breaks.
+    const built = out.match(/Built ui(\/(?:records|recaps)\/[^\s]+\.html)/);
     const href = built ? built[1] : null;
     record(s.id, { type: 'recap', href, log: out.trim().split('\n')[0] });
     cb(null, href);

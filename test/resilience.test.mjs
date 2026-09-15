@@ -50,7 +50,7 @@ test('a hook starts the server when nothing is listening', async () => {
   const r = spawnSync(process.execPath, [join(root, 'scripts', 'hook.mjs'), 'session-start', 'coldstart'], {
     input: JSON.stringify({ session_id: 'cold-1', cwd: root }),
     encoding: 'utf8', timeout: 30_000,
-    env: { ...process.env, NEARLY_PORT: String(port) },
+    env: { ...process.env, NEARLY_PORT: String(port), NEARLY_RECORDINGS: mkdtempSync(join(tmpdir(), 'cr-rec-')) },
   });
   assert.equal(r.status, 0);
   const alive = await fetch(`http://127.0.0.1:${port}/health`).then((x) => x.json()).catch(() => null);
@@ -68,8 +68,9 @@ test('two servers racing for the port: the loser stands down quietly', async () 
   // Hooks start the server on demand, so two tool calls arriving together is
   // ordinary. The loser crashing used to look like a bug in the agent.
   const port = freePort();
+  const recs = mkdtempSync(join(tmpdir(), 'cr-rec-'));
   const first = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
-    cwd: root, stdio: 'ignore', env: { ...process.env, NEARLY_PORT: String(port) },
+    cwd: root, stdio: 'ignore', env: { ...process.env, NEARLY_PORT: String(port), NEARLY_RECORDINGS: recs },
   });
   for (let i = 0; i < 40; i++) {
     try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* waiting */ }

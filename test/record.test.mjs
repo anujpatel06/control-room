@@ -150,3 +150,42 @@ test('it says whether a model touched the words', () => {
   assert.ok(existsSync(join(out, `${slug}.html`)));
   assert.match(html, /computed|not written by a model|No model wrote/i);
 });
+
+test('the auto-built record reports a link, not a null', async () => {
+  // The server scrapes the builder's own output for the path it just wrote.
+  // A rename once broke that silently: the record was built, the link was null,
+  // and the only symptom was a dead entry in the log.
+  const { spawn } = await import('node:child_process');
+  const port = 47900 + Math.floor(Math.random() * 90);
+  const recs = mkdtempSync(join(tmpdir(), 'cr-live-'));
+  const srv = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
+    cwd: root, stdio: 'ignore',
+    env: { ...process.env, NEARLY_PORT: String(port), NEARLY_RECORDINGS: recs, NEARLY_OUT: out, NEARLY_STORY: story },
+  });
+  try {
+    for (let i = 0; i < 50; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* waiting */ }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const sid = '99999999-1111-4222-8333-999999999999';
+    const send = (ev, body) => fetch(`http://127.0.0.1:${port}/hooks/${ev}?attach=linktest`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    await send('prompt', { session_id: sid, cwd: root, prompt: 'do a thing' });
+    await send('stop', { session_id: sid, cwd: root, last_assistant_message: 'did the thing' });
+    await send('session-end', { session_id: sid, cwd: root, reason: 'other' });
+
+    let href = null;
+    for (let i = 0; i < 100; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      const line = readFileSync(join(recs, `${sid}.jsonl`), 'utf8').split('\n')
+        .filter(Boolean).map((l) => JSON.parse(l)).find((e) => e.type === 'recap');
+      if (line) { href = line.href; break; }
+    }
+    assert.ok(href, 'a record event was never written');
+    assert.match(href, /^\/records\/.+\.html$/, `the link must be usable, got ${href}`);
+  } finally {
+    srv.kill('SIGTERM');
+    rmSync(recs, { recursive: true, force: true });
+  }
+});
