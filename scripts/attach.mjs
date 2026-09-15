@@ -110,6 +110,13 @@ function pagesUrl() {
       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const m = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/i);
     if (!m) return null;
+    // A plain clone of the upstream repo points at somebody else's Pages, where
+    // your records will never exist. Publishing needs a fork you control, so
+    // say nothing rather than hand out links that 404.
+    let upstream = null;
+    try { upstream = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository?.url || null; } catch { /* no manifest */ }
+    const u = upstream && upstream.match(/github\.com[:/]([^/]+)\/([^/.]+)/i);
+    if (u && u[1].toLowerCase() === m[1].toLowerCase() && u[2].toLowerCase() === m[2].toLowerCase()) return null;
     return `https://${m[1].toLowerCase()}.github.io/${m[2]}/recaps`;
   } catch { return null; }
 }
@@ -136,7 +143,7 @@ console.log(`${ok('✓')} ${bold('Control Room is on')} for ${bold(name)}  ${dim
 console.log('');
 console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
-console.log(`  ${ok('·')} ${base ? `records publish to ${base}` : dim('records stay local until you set RECAP_URL_BASE')}`);
+console.log(`  ${ok('·')} ${base ? `records publish to ${base}` : dim('records stay on this machine — see “Publish the records” in the README')}`);
 console.log('');
 console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);
 console.log(dim('  Nothing to leave running. Turn it off again with --off.'));

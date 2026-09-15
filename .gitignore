@@ -4,3 +4,7 @@ workspace/.worktrees/
 node_modules/
 .DS_Store
 workspace/
+
+# machine-local config, and build artifacts that embed local paths
+.control-room.json
+ui/replay.html
