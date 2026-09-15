@@ -8,14 +8,14 @@
   "model": "claude-sonnet-5",
   "date": "15 Sept 2026",
   "startedAt": 1789482856421,
-  "durationS": 34.22,
+  "durationS": 43.779,
   "humanWaitS": 6.768,
   "avatar": "AP",
   "author": "Anuj",
   "audience": "reviewer",
   "supervisor": "Anuj",
   "voice": "Samantha",
-  "generatedAt": "2026-09-15T14:34:50.842Z",
+  "generatedAt": "2026-09-15T14:38:52.775Z",
   "scenes": [
     {
       "kind": "cover",
@@ -27,7 +27,7 @@
       "stats": [
         [
           "Ran for",
-          "34s",
+          "44s",
           ""
         ],
         [
@@ -56,9 +56,9 @@
           ""
         ]
       ],
-      "narration": "Agent tempo ran for 34 seconds under Anuj's supervision. 5 tool calls, 3 held for a decision, 1 refused.",
-      "durS": 7.810385,
-      "audioS": 7.010385
+      "narration": "Agent tempo ran for 44 seconds under Anuj's supervision. 5 tool calls, 3 held for a decision, 1 refused.",
+      "durS": 7.856825,
+      "audioS": 7.056825
     },
     {
       "kind": "intent",
@@ -180,5 +180,6 @@
       "audioS": 6.129796
     }
   ],
-  "totalS": 73.73414899999999
+  "kind": "session",
+  "totalS": 73.780589
 }

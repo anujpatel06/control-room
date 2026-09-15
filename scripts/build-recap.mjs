@@ -431,7 +431,8 @@ function narrate(sb) {
 // ---------------------------------------------------------------------------
 const rec = BRANCH ? loadBranch(BRANCH, REPO) : loadRecording(target);
 const sb = buildStoryboard(rec);
-if (BRANCH) { sb.branch = BRANCH; sb.name = basename(rec.repo || '') || sb.name; }
+if (BRANCH) { sb.kind = 'branch'; sb.branch = BRANCH; sb.name = basename(rec.repo || '') || sb.name; }
+else sb.kind = 'session';
 
 if (wantLLM) {
   try { polishWithClaude(sb); console.log('narration rewritten by claude'); }

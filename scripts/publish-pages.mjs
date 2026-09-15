@@ -34,13 +34,27 @@ mkdirSync(outRecaps, { recursive: true });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
+// Every session auto-builds its own record when it ends, but a branch record
+// merges them and is what the reviewer gets. Where both exist for a branch, the
+// branch record wins; otherwise the index fills with pages nobody links to.
+const all = readdirSync(storyDir).filter((f) => f.endsWith('.json'));
+const coveredBranches = new Set();
+for (const f of all) {
+  try {
+    const sb = JSON.parse(readFileSync(join(storyDir, f), 'utf8'));
+    if (sb.kind === 'branch' && sb.branch) coveredBranches.add(`${sb.cwd || ''}::${sb.branch}`);
+  } catch { /* unreadable storyboard; the loop below reports it */ }
+}
+
 const sessions = [];
-for (const f of readdirSync(storyDir).filter((f) => f.endsWith('.json'))) {
+const superseded = [];
+for (const f of all) {
   const slug = f.replace(/\.json$/, '');
   const html = join(builtDir, `${slug}.html`);
   if (!existsSync(html)) { console.warn(`skipping ${slug}: no built page`); continue; }
-  copyFileSync(html, join(outRecaps, `${slug}.html`));
+  
   const sb = JSON.parse(readFileSync(join(storyDir, f), 'utf8'));
+  if (sb.kind !== 'branch' && coveredBranches.has(`${sb.cwd || ''}::${sb.branch}`)) { superseded.push(slug); continue; }
   const cover = sb.scenes.find((s) => s.kind === 'cover');
   const outcome = sb.scenes.find((s) => s.kind === 'outcome');
   sessions.push({
@@ -48,6 +62,7 @@ for (const f of readdirSync(storyDir).filter((f) => f.endsWith('.json'))) {
     title: cover?.title ?? slug, total: sb.totalS, supervisor: sb.supervisor,
     refused: (outcome?.notDone ?? []).length, kb: Math.round(statSync(html).size / 1024),
   });
+  copyFileSync(html, join(outRecaps, `${slug}.html`));
 }
 sessions.sort((a, b) => b.startedAt - a.startedAt);
 
@@ -113,7 +128,8 @@ const page = `<!doctype html>
 writeFileSync(join(docsDir, 'index.html'), page);
 writeFileSync(join(docsDir, '.nojekyll'), '');
 
-console.log(`docs/ built — ${sessions.length} session(s)`);
+console.log(`docs/ built — ${sessions.length} record(s)`);
+if (superseded.length) console.log(`  (${superseded.length} per-session record(s) superseded by a branch record)`);
 for (const s of sessions) console.log(`  ${s.slug.padEnd(22)} ${s.refused} refused  ${s.kb} KB`);
 console.log('');
 if (BASE) {

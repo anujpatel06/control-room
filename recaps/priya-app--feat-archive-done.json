@@ -15,7 +15,7 @@
   "audience": "reviewer",
   "supervisor": "Anuj",
   "voice": "Samantha",
-  "generatedAt": "2026-09-15T14:37:14.712Z",
+  "generatedAt": "2026-09-15T14:38:26.630Z",
   "scenes": [
     {
       "kind": "cover",
@@ -180,5 +180,6 @@
       "audioS": 6.129796
     }
   ],
+  "kind": "branch",
   "totalS": 73.780589
 }
