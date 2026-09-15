@@ -185,7 +185,7 @@ test('the updater never delays an agent and never fails a command', async () => 
     'nothing may sit in front of an action an agent is waiting on');
 
   // A dead network must not break the command it was attached to.
-  const offline = spawnSync(process.execPath, ['-e', `
+  const offline = spawnSync(process.execPath, ['--input-type=module', '-e', `
     global.fetch = () => Promise.reject(new Error('offline'));
     const m = await import(${JSON.stringify(mod)});
     m.applyUpdate(await m.checkForUpdate());
@@ -195,7 +195,7 @@ test('the updater never delays an agent and never fails a command', async () => 
   assert.match(offline.stdout, /survived/);
 
   // Turned off means off.
-  const off = spawnSync(process.execPath, ['-e', `
+  const off = spawnSync(process.execPath, ['--input-type=module', '-e', `
     global.fetch = () => { throw new Error('should not have been called'); };
     const m = await import(${JSON.stringify(mod)});
     console.log(JSON.stringify(await m.checkForUpdate()));
@@ -208,7 +208,7 @@ test('a major version is announced, never installed behind your back', async () 
   // Same major, same promises. A gate whose rules may have changed is read
   // before it is trusted, so the install is left to the person.
   const mod = join(root, 'scripts', 'update-check.mjs');
-  const r = spawnSync(process.execPath, ['-e', `
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
     const m = await import(${JSON.stringify(mod)});
     m.applyUpdate({ name: 'nearly-cli', from: '0.9.0', to: '1.0.0', major: true, kind: 'global' });
   `.trim()], { encoding: 'utf8', timeout: 20_000 });
@@ -225,7 +225,7 @@ test('a failed update says so rather than leaving you to assume', async () => {
   const fakeBin = mkdtempSync(join(tmpdir(), 'cr-bin-'));
   writeFileSync(join(fakeBin, 'npm'), '#!/bin/sh\nexit 1\n');
   spawnSync('chmod', ['+x', join(fakeBin, 'npm')]);
-  const r = spawnSync(process.execPath, ['-e', `
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
     const m = await import(${JSON.stringify(mod)});
     m.applyUpdate({ name: 'nearly-cli', from: '0.1.0', to: '0.1.1', major: false, kind: 'global' });
   `.trim()], {
@@ -257,7 +257,7 @@ test('an upgrade cannot destroy what was recorded', async () => {
   const mod = join(root, 'server', 'paths.mjs');
 
   // Installed: everything lands in the user's own directory.
-  const installed = spawnSync(process.execPath, ['-e', `
+  const installed = spawnSync(process.execPath, ['--input-type=module', '-e', `
     const m = await import(${JSON.stringify(mod)});
     console.log(JSON.stringify({ root: m.dataRoot, rec: m.paths.recordings(), fromCheckout: m.fromCheckout }));
   `.trim()], {
