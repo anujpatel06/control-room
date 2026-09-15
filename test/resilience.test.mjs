@@ -77,17 +77,31 @@ test('two servers racing for the port: the loser stands down quietly', async () 
   const first = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
     cwd: root, stdio: 'ignore', env: { ...process.env, NEARLY_PORT: String(port), NEARLY_RECORDINGS: recs },
   });
-  for (let i = 0; i < 40; i++) {
-    try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* waiting */ }
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  // A loaded CI runner can take well over four seconds to get a node process
+  // listening, and this test read a single un-retried fetch as proof the winner
+  // had died. It failed on one runner out of six while passing locally every
+  // time, which is a test being fragile rather than anything being wrong.
+  const health = async () => {
+    try { const r = await fetch(`http://127.0.0.1:${port}/health`); return r.ok ? await r.json() : null; }
+    catch { return null; }
+  };
+  const settle = async (want, tries = 100) => {
+    for (let i = 0; i < tries; i++) {
+      const h = await health();
+      if (want ? h : !h) return h;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return want ? null : true;
+  };
+
+  assert.ok(await settle(true), 'the first server never started, so there was no race to lose');
   const second = spawnSync(process.execPath, [join(root, 'server', 'index.mjs')], {
     cwd: root, encoding: 'utf8', timeout: 15_000,
     env: { ...process.env, NEARLY_PORT: String(port) },
   });
   assert.equal(second.status, 0, 'losing the race is not an error');
-  const still = await fetch(`http://127.0.0.1:${port}/health`).then((r) => r.json());
-  assert.ok(still.ok, 'the winner keeps serving');
+  const still = await settle(true);
+  assert.ok(still?.ok, 'the winner stopped serving');
   first.kill('SIGTERM');
   await new Promise((r) => setTimeout(r, 200));
 });
