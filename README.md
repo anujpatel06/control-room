@@ -61,10 +61,15 @@ the hook. Seven are supported:
 | Claude Code | `.claude/settings.local.json` | yes | full |
 | Cursor | `.cursor/hooks.json` | yes | full |
 | Antigravity | `.agents/hooks.json` | yes | full |
-| GitHub Copilot CLI | `.github/hooks/nearly.json` | yes | full |
+| GitHub Copilot (CLI **and VS Code agent mode**) | `.github/hooks/nearly.json` | yes | full |
 | Gemini CLI | `.gemini/settings.json` | yes | full |
 | Codex CLI | `.codex/hooks.json` | yes | no prompts, one turn |
 | Windsurf | `.windsurf/hooks.json` | until Cascade gives up | shell and file tools only |
+
+VS Code agent mode loads every `.json` in `.github/hooks/` with no further
+setup, so `nearly --agent=copilot` is the whole of it there — and it is the only
+route for someone on Windows who does not have Claude Code, since Cline's hooks
+are macOS and Linux only and Windsurf's cannot be given a deadline.
 
 `nearly` turns on whichever of these the repo shows signs of, and Claude Code
 either way. `nearly --agent=cursor` forces one, `--agent=all` forces all of them,
@@ -112,6 +117,11 @@ applies to every one of them.
 Zed's built-in agent, Aider, Kilo Code, Warp and the hosted builders (Replit,
 Lovable, Bolt, v0) expose no blocking pre-tool hook. There is nothing to attach
 to, and no adapter can change that.
+
+**Cline** has one, and it is macOS and Linux only — so on Windows there is
+nothing to attach to there either. Cline does keep its own consent trail in
+`ui_messages.json` under its task history, which Nearly could read after the
+fact; that would be a reader rather than a gate, and it does not exist yet.
 
 ## Use it on your own repo
 

@@ -342,12 +342,17 @@ export const ADAPTERS = [
   // -------------------------------------------------------------------------
   {
     id: 'copilot',
-    name: 'GitHub Copilot CLI',
+    name: 'GitHub Copilot',
     verified: null,
     config: '.github/hooks/nearly.json',
-    // Copilot accepts PascalCase event names as a Claude Code compatibility
-    // mode, and in that mode it sends snake_case fields and Claude's own tool
-    // names. So this adapter is mostly a different file path.
+    // Both the CLI and VS Code's agent mode, which loads every .json in
+    // .github/hooks/ with no further setup. Copilot accepts PascalCase event
+    // names as a Claude Code compatibility mode, and in that mode it sends
+    // snake_case fields and Claude's own tool names, so this adapter is mostly
+    // a different file path.
+    //
+    // It also fails closed where Claude Code fails open: a crash or a non-zero
+    // exit in a preToolUse hook denies the call rather than waving it through.
     events: {
       SessionStart: 'session-start', UserPromptSubmit: 'prompt', PreToolUse: 'pre-tool',
       PostToolUse: 'post-tool', Stop: 'stop', SessionEnd: 'session-end',
@@ -356,7 +361,12 @@ export const ADAPTERS = [
       const file = join(repo, '.github', 'hooks', 'nearly.json');
       const cfg = { version: 1, hooks: {} };
       for (const [their, ours] of Object.entries(this.events)) {
-        cfg.hooks[their] = [{ type: 'command', command: cmdFor(ours), timeoutSec: holdFor(ours) }];
+        const run = cmdFor(ours);
+        // `command` is the cross-platform fallback; `bash` and `powershell` are
+        // what the runtime picks per OS. Writing all three means a Windows
+        // machine finds one whichever property it prefers — and Windows is
+        // exactly where somebody with no other option is running this.
+        cfg.hooks[their] = [{ type: 'command', command: run, bash: run, powershell: run, timeoutSec: holdFor(ours) }];
       }
       writeJson(file, cfg);        // our own file; nobody else's entries to keep
       return { file };
