@@ -504,13 +504,22 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(fs.readFileSync(UI));
   }
-  // Static: built recaps and the replay out of ui/, plus a local preview of the
-  // docs/ folder that GitHub Pages will serve, so you can check it before pushing.
+  // Static: built records, the replay page, and a local preview of the docs/
+  // folder GitHub Pages serves, so you can check it before pushing.
+  //
+  // Each of these has to be asked for by name rather than resolved against the
+  // package. Records used to live in ui/records/ and moved to the user's own
+  // directory when it turned out an upgrade was deleting them — but this route
+  // kept serving out of the package, so from an npm install every record 404'd
+  // while sitting perfectly well on disk. It only ever worked from a checkout,
+  // which is the one place nobody would notice.
   if (req.method === 'GET' && (url.pathname.startsWith('/records/') || url.pathname === '/replay.html' || url.pathname === '/docs' || url.pathname.startsWith('/docs/'))) {
-    const docs = url.pathname === '/docs' || url.pathname.startsWith('/docs/');
-    const base = path.join(ROOT, docs ? 'docs' : 'ui');
-    let rel = url.pathname.slice(1).split('/').filter((p) => p && p !== '..').join('/');
-    if (docs) rel = rel.replace(/^docs\/?/, '') || 'index.html';
+    const isDocs = url.pathname === '/docs' || url.pathname.startsWith('/docs/');
+    const isRecord = url.pathname.startsWith('/records/');
+    const base = isRecord ? paths.pages() : isDocs ? paths.docs() : path.join(ROOT, 'ui');
+    const strip = isRecord ? '/records/' : isDocs ? '/docs' : '/';
+    let rel = url.pathname.slice(strip.length).split('/').filter((p) => p && p !== '..').join('/');
+    if (isDocs) rel = rel || 'index.html';
     const file = path.join(base, rel);
     if (!file.startsWith(base) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return json(res, 404, { error: 'not found' });
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

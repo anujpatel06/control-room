@@ -9,7 +9,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -251,4 +251,43 @@ test('a truncated recording is declared, not papered over', async () => {
   const html = rf(join(out, `${readdirSync(out).find((f) => f.includes('feat-trunc'))}`), 'utf8');
   assert.match(html, /could not be read/i, 'and the page tells the reviewer');
   assert.match(html, /floor, not a total/i);
+});
+
+// A record nobody can open is not a record.
+//
+// Records used to live inside the package and moved to the user's own directory
+// when it turned out that upgrading deleted them. The route serving them kept
+// pointing at the package, so from an npm install every record 404'd while
+// sitting perfectly well on disk — and it worked from a checkout, which is the
+// one place nobody would ever notice. Reported as "the record page 404s", and
+// blamed at first on an unrelated stale server.
+test('a built record can actually be fetched from the server', async () => {
+  const { spawn } = await import('node:child_process');
+  const port = 47960 + Math.floor(Math.random() * 30);
+  const pages = mkdtempSync(join(tmpdir(), 'cr-pages-'));
+  const recs = mkdtempSync(join(tmpdir(), 'cr-serve-'));
+  writeFileSync(join(pages, 'demo.html'), '<title>a record</title>');
+
+  const srv = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
+    cwd: root, stdio: 'ignore',
+    env: { ...process.env, NEARLY_PORT: String(port), NEARLY_RECORDINGS: recs,
+      NEARLY_OUT: pages, NEARLY_REPOS: join(recs, 'repos.json') },
+  });
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    for (let i = 0; i < 50; i++) {
+      try { if ((await fetch(`${base}/health`)).ok) break; } catch { /* waiting */ }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const r = await fetch(`${base}/records/demo.html`);
+    assert.equal(r.status, 200, 'the record is on disk but the server will not serve it');
+    assert.match(await r.text(), /a record/);
+
+    // The guard that makes serving a user-writable directory safe.
+    const up = await fetch(`${base}/records/..%2f..%2fetc%2fpasswd`);
+    assert.equal(up.status, 404, 'it served something outside the records directory');
+  } finally {
+    srv.kill('SIGTERM');
+    for (const d of [pages, recs]) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
 });
