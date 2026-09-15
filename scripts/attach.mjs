@@ -21,6 +21,7 @@ import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dataRoot } from '../server/paths.mjs';
+import { report } from './detect.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
@@ -233,6 +234,12 @@ if (base) {
   console.log(`    ${dim('to link them from a pull request, host that folder anywhere and:')}`);
   console.log(`    ${dim('NEARLY_URL_BASE=https://your-host/records nearly')}`);
 }
+console.log('');
+// Say plainly if this repo is also driven by an agent Nearly cannot gate, so
+// nobody walks away believing they are covered when they are not.
+const other = report(repo, { dim, bold });
+if (other) console.log(other);
+
 console.log('');
 console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);
 console.log(dim('  Nothing to leave running. Turn it off again with --off.'));

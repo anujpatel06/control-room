@@ -46,6 +46,31 @@ but a whole session with a real agent, and a real push through the hook, have
 only been done on macOS. If you are the first to try either on Windows or Linux,
 an issue with what broke would be genuinely useful.
 
+### Agents
+
+Nearly gates **Claude Code**. The editor around it does not matter: Claude Code
+in VS Code, in a JetBrains IDE, in a plain terminal or over SSH all read the same
+`.claude/settings.local.json`, so all four are already covered. Neither does the
+model — the gate sits between the agent and your machine, below whichever model
+is answering.
+
+What does matter is the harness making the tool calls. Cursor, Antigravity,
+Windsurf, Copilot CLI, Codex and Gemini CLI each expose a comparable blocking
+hook under a different name and payload shape, and each needs a small adapter
+before Nearly can hold anything they do. None of those exist yet.
+
+Because believing you are gated when you are not is worse than knowing you are
+not, `nearly` says so on the way in:
+
+```
+  Nearly gates Claude Code. This repo also looks set up for:
+    Cursor (configured in this repo)
+    Those are not gated yet. Sessions you run in them are neither held nor recorded.
+```
+
+If the harness you use is missing, open an issue saying which one. That is the
+order they get built in.
+
 ## Use it on your own repo
 
 One command, in the repo you want recorded.
