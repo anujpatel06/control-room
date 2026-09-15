@@ -54,10 +54,16 @@ writeFileSync(hookPath, `#!/bin/sh
 # Never blocks the push; "exit 0" at the end is the whole safety story.
 #
 # git gives a hook no terminal of its own, so borrow the user's when there is
-# one. Scripted and CI pushes have no /dev/tty: run anyway, print nothing to
-# ask, and post nothing.
+# one. Scripted and CI pushes have no controlling terminal: run anyway, print
+# nothing to ask, and post nothing.
+#
+# The test has to be an actual open. /dev/tty always exists and is always
+# readable and writable by its permission bits; opening it is what fails, with
+# ENXIO, when no terminal is attached. The open has to happen inside a subshell
+# too: a failed redirection is reported by the shell itself, so redirecting the
+# command's stderr does not silence it, but redirecting the subshell's does.
 CR="${join(root, 'scripts', 'push-record.mjs')}"
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+if (: >/dev/tty) 2>/dev/null; then
   node "$CR" "${repo}" </dev/tty >/dev/tty 2>&1 || true
 else
   CONTROL_ROOM_NO_TTY=1 node "$CR" "${repo}" || true
