@@ -78,7 +78,7 @@ const viaNpx = /[\\/]_npx[\\/]/.test(root);
 function installGlobally() {
   if (!viaNpx || onPath() || argv.includes('--no-install') || process.env.NEARLY_NO_INSTALL === '1') return false;
   process.stdout.write(dim(`  Installing nearly so upgrades reach you… `));
-  const r = spawnSync('npm', ['install', '-g', `nearly-cli@${pkgVersion()}`, '--silent', '--no-fund', '--no-audit'],
+  const r = spawnSync(NPM, ['install', '-g', `nearly-cli@${pkgVersion()}`, '--silent', '--no-fund', '--no-audit'],
     { encoding: 'utf8', timeout: 180_000 });
   if (r.status === 0 && onPath()) { console.log('done'); return true; }
   console.log(dim('skipped'));
@@ -107,6 +107,9 @@ const nameIdx = argv.indexOf('--name');
 const name = (nameIdx !== -1 ? argv[nameIdx + 1] : basename(repo))
   .replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'repo';
 
+// npm is a .cmd shim on Windows and Node will not run one through spawn unless
+// it is named exactly. Without this, installing and upgrading both fail there.
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 const ok = (s) => `\x1b[32m${s}\x1b[0m`;

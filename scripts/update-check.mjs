@@ -24,6 +24,9 @@ import { spawnSync, execFileSync } from 'node:child_process';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DAY = 24 * 60 * 60 * 1000;
 
+// npm is a .cmd shim on Windows and Node will not run one through spawn unless
+// it is named exactly. Without this, installing and upgrading both fail there.
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
@@ -100,7 +103,7 @@ export function applyUpdate(u) {
   }
 
   process.stdout.write(dim(`  Updating Nearly ${u.from} → ${u.to}… `));
-  const r = spawnSync('npm', ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
+  const r = spawnSync(NPM, ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
     { encoding: 'utf8', timeout: 120_000 });
 
   if (r.status === 0) {

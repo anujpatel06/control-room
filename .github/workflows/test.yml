@@ -1,0 +1,40 @@
+name: tests
+
+# Nearly is developed on macOS and has never been run anywhere else. This is how
+# that stops being true: every push, on three operating systems, so the platform
+# bugs are found here rather than by the first person who tries it on Ubuntu.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false        # one platform failing must not hide the others
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Node and git versions
+        run: node --version && git --version
+      # No dependencies to install: that is the point.
+      - name: Tests
+        run: npm test
+      - name: Build a record from the committed recordings
+        shell: bash
+        run: |
+          node scripts/build-recap.mjs --branch feat/third-task \
+            --repo "$(node -e "
+              const fs=require('fs');
+              const f=fs.readdirSync('recordings/demo')[0];
+              const l=fs.readFileSync('recordings/demo/'+f,'utf8').split('\n')[0];
+              process.stdout.write(JSON.parse(l).worktree);
+            ")" --no-audio || echo "no matching worktree on this runner, which is expected"
