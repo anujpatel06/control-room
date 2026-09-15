@@ -440,13 +440,13 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-    res.write(`data: ${JSON.stringify({ type: 'snapshot', sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS })}\n\n`);
     clients.add(res);
     req.on('close', () => clients.delete(res));
     return;
   }
   if (req.method === 'GET' && url.pathname === '/state') {
-    return json(res, 200, { sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER });
+    return json(res, 200, { sessions: [...sessions.values()].map(summary), rules: Object.fromEntries(rules), defaults: DEFAULT_TIER, askTimeoutMs: ASK_TIMEOUT_MS });
   }
   if (req.method === 'GET' && url.pathname.startsWith('/recordings/')) {
     const id = url.pathname.split('/')[2];

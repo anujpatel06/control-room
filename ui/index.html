@@ -4,110 +4,270 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Control Room</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --bg: #0F1319; --panel: #161C25; --panel-2: #1C2430; --line: #29313D; --ink: #E8EBF0; --ink-2: #AEB6C2; --ink-3: #7F8997;
-    --accent: #8FA6FF; --ok: #6CC48E; --warn: #D9B44A; --bad: #E8905F; --never: #E06C6C;
-    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    --sans: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    /* A dark tool that sits next to a terminal, but not a terminal. The ground
+       carries a slight blue bias so the neutrals read as chosen, not default. */
+    --bg:        #0B0D11;
+    --panel:     #13161C;
+    --panel-2:   #191D25;
+    --panel-3:   #20252F;
+    --rule:      #242932;
+    --rule-soft: #1B1F27;
+
+    --ink:       #E9ECF1;
+    --ink-2:     #98A1AF;
+    --ink-3:     #667080;
+
+    /* The accent is for interactive chrome only. Status never borrows it. */
+    --accent:    #7C8CFF;
+    --accent-dim: #2A3050;
+
+    /* Semantic. "ask" is deliberately the loudest thing on the page: a held
+       call is the only thing here that is actually costing someone time. */
+    --ask:       #FFC145;
+    --ask-dim:   #2E2616;
+    --allow:     #3DD68C;
+    --allow-dim: #10271D;
+    --deny:      #FF7A7A;
+    --deny-dim:  #2B1718;
+
+    --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r: 10px;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
-  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .02em; }
-  header .quota { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; }
-  header .quota b { color: var(--ink-2); font-weight: 500; }
-  main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 0; height: calc(100vh - 49px); }
-  section { overflow: auto; border-right: 1px solid var(--line); }
-  section:last-child { border-right: 0; }
-  h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0; padding: 14px 16px 8px; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.006em;
+  }
+  .mono { font-family: var(--mono); }
+  .lbl {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 500;
+  }
+  kbd {
+    font-family: var(--mono); font-size: 10px; line-height: 1; padding: 3px 5px;
+    border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px;
+    color: var(--ink-3); background: var(--panel-2); margin-left: 6px; white-space: nowrap;
+  }
 
-  /* sessions */
-  .session { margin: 0 12px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; }
-  .session .row { display: flex; align-items: center; gap: 8px; }
-  .session .name { font-weight: 600; }
-  .pill { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--ink-2); }
-  .pill.working { color: var(--accent); border-color: var(--accent); }
-  .pill.waiting { color: var(--warn); border-color: var(--warn); background: rgba(217,180,74,.08); }
-  .pill.idle { color: var(--ok); border-color: var(--ok); }
-  .pill.exited, .pill.starting { color: var(--ink-3); }
-  .session .last { color: var(--ink-2); font-size: 13px; max-height: 3.2em; overflow: hidden; }
-  .session .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: flex; gap: 10px; flex-wrap: wrap; }
-  .session .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .session input { flex: 1; min-width: 0; }
-  button { font: inherit; font-size: 12.5px; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; }
-  button:hover { border-color: var(--ink-3); }
+  /* ---------- top bar ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px;
+    border-bottom: 1px solid var(--rule); background: var(--panel); position: sticky; top: 0; z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .mark {
+    width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+    background: linear-gradient(145deg, var(--accent), #5866D4); flex: none;
+  }
+  .mark i { width: 6px; height: 6px; border-radius: 50%; background: #0B0D11; display: block; }
+  h1 { font-size: 14.5px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+  .conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); display: block; }
+  .conn[data-on="live"] i { background: var(--allow); box-shadow: 0 0 0 3px var(--allow-dim); }
+  .conn[data-on="live"] { color: var(--ink-2); }
+  .quota { margin-left: auto; display: flex; gap: 16px; font-size: 12px; color: var(--ink-3); }
+  .quota b { color: var(--ink-2); font-weight: 600; font-family: var(--mono); font-size: 11.5px; }
+
+  /* ---------- layout ---------- */
+  main {
+    display: grid; grid-template-columns: 272px minmax(0, 1fr) 340px;
+    height: calc(100vh - 52px);
+  }
+  .col { overflow-y: auto; border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
+  .col:last-child { border-right: 0; }
+  .col-h {
+    display: flex; align-items: center; gap: 8px; padding: 15px 16px 9px;
+    position: sticky; top: 0; background: var(--bg); z-index: 2;
+  }
+  .col-h .count {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+    background: var(--panel-2); border-radius: 20px; padding: 2px 8px;
+  }
+  .col-h .count[data-hot="1"] { color: var(--ask); background: var(--ask-dim); }
+
+  /* ---------- controls ---------- */
+  button {
+    font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em;
+    padding: 7px 12px; border-radius: 7px; border: 1px solid var(--rule);
+    background: var(--panel-2); color: var(--ink); cursor: pointer;
+    display: inline-flex; align-items: center; transition: background .12s, border-color .12s;
+  }
+  button:hover { background: var(--panel-3); border-color: var(--ink-3); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button.allow { border-color: var(--ok); color: var(--ok); }
-  button.deny { border-color: var(--bad); color: var(--bad); }
-  button.ghost { color: var(--ink-2); }
-  input, textarea { font: inherit; font-size: 13px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
-  textarea { width: 100%; resize: vertical; min-height: 60px; }
-  form.new { margin: 0 12px 12px; display: grid; gap: 6px; }
+  button:disabled { opacity: .5; cursor: default; }
+  button[data-v="primary"] { background: var(--accent); border-color: var(--accent); color: #0B0D11; }
+  button[data-v="primary"]:hover { background: #8F9CFF; }
+  button[data-v="allow"] { color: var(--allow); border-color: color-mix(in srgb, var(--allow) 34%, transparent); }
+  button[data-v="allow"]:hover { background: var(--allow-dim); border-color: var(--allow); }
+  button[data-v="deny"] { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 34%, transparent); }
+  button[data-v="deny"]:hover { background: var(--deny-dim); border-color: var(--deny); }
+  button[data-v="ghost"] { background: transparent; color: var(--ink-2); border-color: transparent; padding-inline: 8px; }
+  button[data-v="ghost"]:hover { background: var(--panel-2); color: var(--ink); }
+  input, textarea {
+    font: inherit; font-size: 13px; width: 100%; background: var(--bg); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 7px; padding: 8px 10px;
+  }
+  input::placeholder, textarea::placeholder { color: var(--ink-3); }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 66px; line-height: 1.5; }
 
-  /* approvals */
-  .empty { color: var(--ink-3); padding: 24px 16px; }
-  .ask { margin: 0 16px 12px; background: var(--panel); border: 1px solid var(--warn); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
-  .ask .head { display: flex; align-items: baseline; gap: 10px; }
-  .ask .tool { font-weight: 600; }
-  .ask .why { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
-  .ask .wait { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--warn); }
-  .ask pre { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
-  .ask .btns { display: flex; gap: 6px; flex-wrap: wrap; }
-  .ask .blast { font-size: 12px; color: var(--ink-2); }
-  .rules { margin: 0 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
-  .rules span { display: inline-block; margin: 0 8px 4px 0; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; }
+  /* ---------- fleet ---------- */
+  .new { margin: 0 12px 14px; display: grid; gap: 7px; }
+  .fleet { padding: 0 12px 18px; display: grid; gap: 8px; }
+  .agent {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r);
+    padding: 11px 13px; display: grid; gap: 7px; position: relative; overflow: hidden;
+  }
+  .agent[data-state="waiting"] { border-color: color-mix(in srgb, var(--ask) 40%, transparent); }
+  .agent[data-state="waiting"]::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--ask);
+  }
+  .agent .top { display: flex; align-items: center; gap: 8px; }
+  .agent .nm { font-weight: 600; font-size: 13.5px; letter-spacing: -0.01em; }
+  .state {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
+    font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .state i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: block; }
+  .state[data-s="working"] { color: var(--accent); }
+  .state[data-s="waiting"] { color: var(--ask); }
+  .state[data-s="idle"] { color: var(--allow); }
+  .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-3); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 5px;
+  }
+  .agent .said { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; max-height: 3em; overflow: hidden; }
+  .agent .meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); display: flex; gap: 10px; flex-wrap: wrap; }
+  .agent .acts { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .agent .acts input { flex: 1 1 110px; min-width: 0; font-size: 12px; padding: 5px 8px; }
+  .agent .acts button { font-size: 11.5px; padding: 5px 9px; }
 
-  /* log */
-  .log { padding: 0 12px 16px; display: grid; gap: 4px; font-family: var(--mono); font-size: 11.5px; }
-  .ev { display: grid; grid-template-columns: 52px 74px 1fr; gap: 8px; padding: 3px 4px; border-radius: 3px; color: var(--ink-2); }
-  .ev .t { color: var(--ink-3); }
-  .ev .k { color: var(--ink-3); }
-  .ev.decision .k { color: var(--ok); } .ev.decision.deny .k { color: var(--bad); }
-  .ev.ask .k { color: var(--warn); }
+  /* ---------- the ask: the point of the whole page ---------- */
+  .asks { padding: 0 18px 24px; display: grid; gap: 14px; }
+  .ask {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 14px;
+    display: grid; overflow: hidden; scroll-margin-top: 70px;
+  }
+  .ask.focus { border-color: color-mix(in srgb, var(--ask) 55%, transparent); box-shadow: 0 0 0 3px var(--ask-dim); }
+  .ask-h { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--rule-soft); }
+  .ask-h .tool { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; }
+  .ask-h .who { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  .ask-h .clock {
+    margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 500;
+    color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  .ask-h .clock[data-urgent="1"] { color: var(--ask); }
+  .ask-h .clock[data-urgent="2"] { color: var(--deny); }
+  .ask pre {
+    margin: 0; padding: 14px 16px; background: var(--bg);
+    font: 13px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word;
+    max-height: 230px; overflow: auto; color: var(--ink);
+  }
+  .blast {
+    display: flex; gap: 9px; padding: 11px 16px; font-size: 12.5px; color: var(--ink-2);
+    border-top: 1px solid var(--rule-soft); line-height: 1.5;
+  }
+  .blast b { color: var(--ink); font-weight: 600; }
+  .blast .ic { color: var(--ask); flex: none; font-size: 13px; line-height: 1.35; }
+  .btns { display: flex; gap: 7px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--rule-soft); }
+  /* The deadline is real: nobody answering means denied. Show it running out. */
+  .deadline { padding: 0 16px 13px; display: grid; gap: 5px; }
+  .deadline .bar { height: 3px; border-radius: 2px; background: var(--panel-3); overflow: hidden; }
+  .deadline .bar i { display: block; height: 100%; background: var(--ask); transition: width .9s linear; }
+  .deadline[data-urgent="2"] .bar i { background: var(--deny); }
+  .deadline .cap { font-size: 11px; color: var(--ink-3); }
+
+  .empty { padding: 30px 18px; color: var(--ink-3); font-size: 13px; max-width: 46ch; line-height: 1.65; }
+  .empty b { color: var(--ink-2); font-weight: 600; display: block; margin-bottom: 5px; font-size: 14px; }
+  .empty .keys { margin-top: 16px; display: grid; gap: 7px; font-size: 11.5px; }
+  .empty .keys kbd:first-child { margin-left: 0; }
+  .empty .keys span { display: flex; align-items: center; gap: 2px; }
+  .empty .keys span > :last-child { margin-left: 8px; }
+
+  .rules { padding: 0 18px 20px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .rules span {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    border: 1px solid var(--rule); border-radius: 5px; padding: 3px 8px; background: var(--panel);
+  }
+  .rules span em { font-style: normal; color: var(--ink-3); }
+  .rules .none { color: var(--ink-3); border-style: dashed; }
+
+  /* ---------- log ---------- */
+  .log { padding: 0 12px 20px; display: grid; gap: 1px; font-family: var(--mono); font-size: 11px; }
+  .ev { display: grid; grid-template-columns: 46px 1fr; gap: 9px; padding: 5px 7px; border-radius: 6px; color: var(--ink-2); }
+  .ev:hover { background: var(--panel); }
+  .ev .t { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .ev .b { min-width: 0; display: grid; gap: 2px; }
+  .ev .k { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .ev .v { white-space: pre-wrap; word-break: break-word; max-height: 5.4em; overflow: hidden; line-height: 1.45; }
+  .ev.decision .k { color: var(--allow); }
+  .ev.decision.deny .k { color: var(--deny); }
+  .ev.ask .k { color: var(--ask); }
   .ev.tool_use .k { color: var(--accent); }
-  .ev.text .k { color: var(--ink); }
-  .ev.result { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
-  .ev.result .k { color: var(--ok); }
-  .ev.stderr .k, .ev.api_error .k, .ev.checkpoint_error .k { color: var(--never); }
-  .ev .v { white-space: pre-wrap; word-break: break-word; max-height: 6.5em; overflow: hidden; }
-  @media (prefers-reduced-motion: no-preference) { .ask { animation: in .18s ease-out; } @keyframes in { from { transform: translateY(-4px); opacity: 0; } } }
-  @media (max-width: 960px) { main { grid-template-columns: 1fr; height: auto; } section { border-right: 0; border-bottom: 1px solid var(--line); } }
+  .ev.text .v { color: var(--ink); }
+  .ev.result { border-top: 1px solid var(--rule-soft); margin-top: 5px; padding-top: 7px; }
+  .ev.recap .k { color: var(--accent); }
+  .ev.stderr .k, .ev.api_error .k, .ev.checkpoint_error .k, .ev.recap_error .k { color: var(--deny); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .ask { animation: rise .2s cubic-bezier(.2,.7,.3,1); }
+    @keyframes rise { from { transform: translateY(-6px); opacity: 0; } }
+  }
+  @media (max-width: 1060px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .col { border-right: 0; border-bottom: 1px solid var(--rule); }
+    .col-h { position: static; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Control Room</h1>
-  <span class="pill" id="conn">connecting</span>
+  <div class="brand"><span class="mark"><i></i></span><h1>Control Room</h1></div>
+  <span class="conn" id="conn"><i></i><span id="connText">connecting</span></span>
   <div class="quota" id="quota"></div>
 </header>
+
 <main>
-  <section>
-    <h2>Sessions</h2>
+  <div class="col">
+    <div class="col-h"><span class="lbl">Agents</span><span class="count" id="fleetCount">0</span></div>
     <form class="new" id="newForm">
-      <input name="name" placeholder="name (e.g. docs)" required>
+      <input name="name" placeholder="Name, e.g. docs" required autocomplete="off">
       <textarea name="prompt" placeholder="What should this agent do in the workspace?" required></textarea>
-      <button type="submit">Start agent</button>
+      <button type="submit" data-v="primary">Start agent</button>
     </form>
-    <div id="sessions"></div>
-  </section>
-  <section>
-    <h2>Needs you</h2>
-    <div id="asks"><div class="empty">Nothing waiting. Agents on the "do and log" tier run without asking.</div></div>
-    <h2>Rules learned this run</h2>
-    <div class="rules" id="rules"><span>none yet</span></div>
-  </section>
-  <section>
-    <h2>Log</h2>
+    <div class="fleet" id="sessions"></div>
+  </div>
+
+  <div class="col">
+    <div class="col-h"><span class="lbl">Needs you</span><span class="count" id="askCount">0</span></div>
+    <div class="asks" id="asks"></div>
+    <div class="col-h"><span class="lbl">Rules learned this run</span></div>
+    <div class="rules" id="rules"></div>
+  </div>
+
+  <div class="col">
+    <div class="col-h"><span class="lbl">Activity</span></div>
     <div class="log" id="log"></div>
-  </section>
+  </div>
 </main>
+
 <script>
-  const S = { sessions: new Map(), rules: {}, defaults: {} };
+  const S = { sessions: new Map(), rules: {}, defaults: {}, askTimeoutMs: 120000 };
   const $ = (id) => document.getElementById(id);
   const fmtT = (ms) => new Date(ms).toLocaleTimeString([], { hour12: false });
-  const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const post = (p, b) => fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+
+  let focusIdx = 0;          // which ask the keyboard is aimed at
+  let currentAsks = [];
 
   function prettyInput(tool, input) {
     if (!input) return '';
@@ -117,65 +277,109 @@
     if (tool === 'Read' || tool === 'Glob' || tool === 'Grep') return JSON.stringify(input);
     return JSON.stringify(input, null, 2);
   }
-  function blast(tool, input) {
-    if (tool === 'Bash') return 'Runs a shell command inside this agent\'s worktree. Reversible unless it touches the network or files outside it.';
-    if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') return 'Changes a file in the worktree. Reversible with Undo (git).';
-    if (tool === 'WebFetch') return 'Reads an external URL. Content it returns may try to instruct the agent.';
-    if (tool === 'Task') return 'Spawns a subagent with its own tool calls, each gated here.';
-    return 'Default tier for this tool is "ask".';
+  function blast(tool) {
+    if (tool === 'Bash') return '<b>Runs a shell command</b> inside this agent\'s worktree. Reversible unless it touches the network or files outside it.';
+    if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') return '<b>Changes a file</b> in the worktree. Reversible with Undo.';
+    if (tool === 'WebFetch') return '<b>Reads an external URL.</b> Whatever it returns may try to instruct the agent.';
+    if (tool === 'Task') return '<b>Spawns a subagent</b> with its own tool calls, each gated here.';
+    return 'The default tier for this tool is “ask”.';
   }
 
   function renderSessions() {
-    const el = $('sessions'); el.innerHTML = '';
+    const el = $('sessions');
+    el.innerHTML = '';
+    $('fleetCount').textContent = S.sessions.size;
     for (const s of S.sessions.values()) {
-      const d = document.createElement('div'); d.className = 'session';
+      const d = document.createElement('div');
+      d.className = 'agent';
+      d.dataset.state = s.state || '';
       const u = s.usage ? `in ${s.usage.in ?? 0} · cache ${s.usage.cacheRead ?? 0} · out ${s.usage.out ?? 0}` : '';
       d.innerHTML = `
-        <div class="row"><span class="name">${esc(s.name)}</span><span class="pill ${s.state}">${s.state}</span>${s.attached ? '<span class="pill" title="Started by Claude Code in your own repo; gated and recorded here">attached</span>' : ''}${s.currentTool ? `<span class="pill">${esc(s.currentTool)}</span>` : ''}</div>
-        <div class="last">${esc(s.lastText || '')}</div>
-        <div class="meta"><span>turns ${s.turns || 0}</span><span>${esc(s.branch || '')}</span>${u ? `<span>${u}</span>` : ''}</div>
-        <div class="actions">${s.attached ? '' : `
-          <input placeholder="follow-up message" data-msg="${s.id}">
+        <div class="top">
+          <span class="nm">${esc(s.name)}</span>
+          <span class="state" data-s="${esc(s.state || '')}"><i></i>${esc(s.state || '')}</span>
+          ${s.attached ? '<span class="tag" title="Started by Claude Code in your own repo">attached</span>' : ''}
+          ${s.currentTool ? `<span class="tag">${esc(s.currentTool)}</span>` : ''}
+        </div>
+        ${s.lastText ? `<div class="said">${esc(s.lastText)}</div>` : ''}
+        <div class="meta"><span>${s.turns || 0} turns</span>${s.branch ? `<span>${esc(s.branch)}</span>` : ''}${u ? `<span>${u}</span>` : ''}</div>
+        <div class="acts">${s.attached ? '' : `
+          <input placeholder="Follow-up" data-msg="${s.id}" autocomplete="off">
           <button data-send="${s.id}">Send</button>
-          <button class="ghost" data-undo="${s.id}" title="git reset --hard HEAD~1 in this worktree">Undo turn</button>`}
-          <button class="ghost" data-stop="${s.id}">${s.attached ? 'Detach' : 'Stop'}</button>
-          <button class="ghost" data-recap="${s.id}" title="Build a narrated recap page from this session's recording">Recap</button>
-          <button class="ghost" data-post="${s.id}" title="Comment the recap on this branch's pull request (gh pr comment)">Post to PR</button>
+          <button data-v="ghost" data-undo="${s.id}" title="git reset --hard HEAD~1 in this worktree">Undo</button>`}
+          <button data-v="ghost" data-stop="${s.id}">${s.attached ? 'Detach' : 'Stop'}</button>
+          <button data-v="ghost" data-recap="${s.id}" title="Build the session record">Record</button>
+          <button data-v="ghost" data-post="${s.id}" title="Comment the record on this branch's pull request">Post</button>
         </div>`;
       el.appendChild(d);
     }
-    if (!S.sessions.size) el.innerHTML = '<div class="empty">No agents yet. Start one above; it runs on your Claude subscription in its own git worktree.</div>';
+    if (!S.sessions.size) el.innerHTML = '<div class="empty">No agents yet. Start one above and it runs on your Claude subscription, in its own git worktree.</div>';
   }
 
   function renderAsks() {
-    const el = $('asks'); el.innerHTML = '';
+    const el = $('asks');
     const asks = [];
     for (const s of S.sessions.values()) for (const p of s.pending || []) asks.push({ ...p, sname: s.name });
-    // triage: by blast radius first (Bash/WebFetch/Task before edits), then by waiting time
+    // Triage by blast radius first: a shell command or a fetch can reach further
+    // than an edit, so it should be the one you are looking at.
     const rank = (p) => (p.tool === 'Bash' || p.tool === 'WebFetch' || p.tool === 'Task') ? 0 : 1;
     asks.sort((a, b) => rank(a) - rank(b) || a.at - b.at);
-    if (!asks.length) { el.innerHTML = '<div class="empty">Nothing waiting. Agents on the "do and log" tier run without asking.</div>'; return; }
-    for (const p of asks) {
-      const d = document.createElement('div'); d.className = 'ask';
-      d.innerHTML = `
-        <div class="head"><span class="tool">${esc(p.tool)}</span><span class="why">${esc(p.sname)} · ${esc(p.reason)} · rule key ${esc(p.key)}</span><span class="wait" data-wait="${p.at}"></span></div>
-        <pre>${esc(prettyInput(p.tool, p.input))}</pre>
-        <div class="blast">${esc(blast(p.tool, p.input))}</div>
-        <div class="btns">
-          <button class="allow" data-decide="allow" data-scope="once">Allow once</button>
-          <button class="allow" data-decide="allow" data-scope="always">Allow always (${esc(p.key)})</button>
-          <button class="deny" data-decide="deny" data-scope="once">Deny</button>
-          <button class="deny" data-decide="deny" data-scope="always">Never (${esc(p.key)})</button>
-        </div>`;
-      d.querySelectorAll('[data-decide]').forEach((b) => b.onclick = () => post('/decide', { session: p.session, id: p.id, decision: b.dataset.decide, scope: b.dataset.scope }));
-      el.appendChild(d);
+    currentAsks = asks;
+    focusIdx = Math.min(focusIdx, Math.max(0, asks.length - 1));
+
+    $('askCount').textContent = asks.length;
+    $('askCount').dataset.hot = asks.length ? '1' : '0';
+    document.title = asks.length ? `(${asks.length}) Control Room` : 'Control Room';
+
+    if (!asks.length) {
+      el.innerHTML = `<div class="empty"><b>Nothing is waiting.</b>
+        Tools on the “do and log” tier run without asking and leave a receipt. You are only
+        interrupted for things that change something or reach outside the worktree.
+        <div class="keys">
+          <span><kbd>A</kbd><kbd>⇧A</kbd> allow once, or for the rest of the run</span>
+          <span><kbd>D</kbd><kbd>⇧D</kbd> deny once, or never again</span>
+          <span><kbd>J</kbd><kbd>K</kbd> move between requests</span>
+        </div></div>`;
+      return;
     }
+
+    el.innerHTML = asks.map((p, i) => `
+      <div class="ask${i === focusIdx ? ' focus' : ''}" data-i="${i}" data-id="${p.id}" data-session="${p.session}">
+        <div class="ask-h">
+          <span class="tool">${esc(p.tool)}</span>
+          <span class="who">${esc(p.sname)}</span>
+          <span class="tag" title="Always and Never attach to this key">${esc(p.key || p.tool)}</span>
+          <span class="clock" data-wait="${p.at}"></span>
+        </div>
+        <pre>${esc(prettyInput(p.tool, p.input))}</pre>
+        <div class="blast"><span class="ic">▲</span><span>${blast(p.tool)}</span></div>
+        <div class="btns">
+          <button data-v="allow" data-decide="allow" data-scope="once">Allow once<kbd>A</kbd></button>
+          <button data-v="allow" data-decide="allow" data-scope="always" title="Allow every ${esc(p.key || p.tool)} for the rest of this run">Always<kbd>⇧A</kbd></button>
+          <button data-v="deny" data-decide="deny" data-scope="once">Deny<kbd>D</kbd></button>
+          <button data-v="deny" data-decide="deny" data-scope="always" title="Never allow ${esc(p.key || p.tool)} again this run">Never<kbd>⇧D</kbd></button>
+        </div>
+        <div class="deadline" data-wait-bar="${p.at}">
+          <div class="bar"><i></i></div>
+          <div class="cap"></div>
+        </div>
+      </div>`).join('');
+    tickWaits();
   }
+
+  function decide(ask, decision, scope) {
+    if (!ask) return;
+    post('/decide', { session: ask.session, id: ask.id, decision, scope });
+  }
+
   function renderRules() {
     const el = $('rules');
     const entries = Object.entries(S.rules);
-    el.innerHTML = entries.length ? entries.map(([k, v]) => `<span>${esc(k)} → ${esc(v)}</span>`).join('') : '<span>none yet</span>';
+    el.innerHTML = entries.length
+      ? entries.map(([k, v]) => `<span>${esc(k)} <em>→ ${esc(v)}</em></span>`).join('')
+      : '<span class="none">None yet. “Always” and “Never” create them.</span>';
   }
+
   function renderQuota() {
     let w = null;
     for (const s of S.sessions.values()) if (s.rateLimit) w = s.rateLimit;
@@ -183,6 +387,7 @@
     const pct = (x) => Math.round((x?.utilization ?? 0) * 100) + '%';
     $('quota').innerHTML = `<span>5-hour <b>${pct(w.five_hour)}</b></span><span>7-day <b>${pct(w.seven_day)}</b></span>`;
   }
+
   function logEvent(ev) {
     if (['session-state', 'snapshot', 'rules', 'rate_limit', 'hook', 'post_tool'].includes(ev.type)) return;
     const s = S.sessions.get(ev.session);
@@ -196,17 +401,17 @@
       case 'tool_result': v = (ev.is_error ? 'ERROR ' : '') + ev.content; break;
       case 'text': v = ev.text; break;
       case 'prompt': v = ev.text; break;
-      case 'result': v = `${ev.subtype} · ${ev.num_turns} turns · ${(ev.duration_ms / 1000).toFixed(0)}s · est $${(ev.cost_usd ?? 0).toFixed(2)} · denials ${ev.denials?.length ?? 0}\n${ev.text}`; break;
+      case 'result': v = `${ev.subtype} · ${ev.num_turns} turns · ${(ev.duration_ms / 1000).toFixed(0)}s · ${ev.denials?.length ?? 0} denial(s)\n${ev.text}`; break;
       case 'checkpoint': v = `${ev.sha} ${ev.msg}`; break;
+      case 'turn_diff': v = `turn ${ev.turn} · ${(ev.stat || []).length} file(s) changed`; break;
       case 'undo': v = `${ev.from} → ${ev.to}`; break;
       case 'recap': v = `${ev.href} · ${ev.log}`; break;
-      case 'turn_diff': v = `turn ${ev.turn} · ${(ev.stat || []).length} file(s) changed`; break;
       case 'recap_error': v = ev.error; break;
       case 'init': v = `model ${ev.model} · auth ${ev.apiKeySource}`; break;
       case 'session': v = `${ev.subtype} ${ev.name || ''} ${ev.branch || ''} ${ev.code ?? ''}`; break;
       default: v = ev.text || ev.detail || ev.error || JSON.stringify(ev).slice(0, 300);
     }
-    d.innerHTML = `<span class="t">${fmtT(ev.at)}</span><span class="k">${esc(s ? s.name : '')} ${esc(ev.type)}</span><span class="v">${esc(v)}</span>`;
+    d.innerHTML = `<span class="t">${fmtT(ev.at)}</span><span class="b"><span class="k">${esc(s ? s.name : '')} ${esc(ev.type)}</span><span class="v">${esc(v)}</span></span>`;
     const log = $('log');
     log.appendChild(d);
     while (log.children.length > 400) log.removeChild(log.firstChild);
@@ -223,13 +428,14 @@
       S.sessions.clear();
       for (const s of ev.sessions) S.sessions.set(s.id, s);
       S.rules = ev.rules; S.defaults = ev.defaults;
+      if (ev.askTimeoutMs) S.askTimeoutMs = ev.askTimeoutMs;
       renderSessions(); renderAsks(); renderRules(); renderQuota();
       return;
     }
     if (ev.type === 'rules') { S.rules = ev.rules; renderRules(); return; }
     const s = upsert(ev);
-    if (ev.type === 'session' && ev.subtype === 'created') { s.name = ev.name; s.branch = ev.branch; s.state = 'starting'; s.pending = []; }
-    if (ev.type === 'session-state') { Object.assign(s, { state: ev.state, currentTool: ev.currentTool, turns: ev.turns ?? s.turns, usage: ev.usage ?? s.usage, rateLimit: ev.rateLimit ?? s.rateLimit, lastText: ev.lastText ?? s.lastText }); }
+    if (ev.type === 'session' && ev.subtype === 'created') { s.name = ev.name; s.branch = ev.branch; s.attached = !!ev.attached; s.state = 'starting'; s.pending = []; }
+    if (ev.type === 'session-state') Object.assign(s, { state: ev.state, currentTool: ev.currentTool, turns: ev.turns ?? s.turns, usage: ev.usage ?? s.usage, rateLimit: ev.rateLimit ?? s.rateLimit, lastText: ev.lastText ?? s.lastText });
     if (ev.type === 'ask') { s.pending = [...(s.pending || []).filter((p) => p.id !== ev.id), ev]; s.state = 'waiting'; }
     if (ev.type === 'decision') { s.pending = (s.pending || []).filter((p) => p.id !== ev.id); }
     if (ev.type === 'result') { s.turns = (s.turns || 0) + 1; s.state = 'idle'; }
@@ -239,8 +445,8 @@
 
   function connect() {
     const es = new EventSource('/events');
-    es.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'pill idle'; };
-    es.onerror = () => { $('conn').textContent = 'reconnecting'; $('conn').className = 'pill waiting'; };
+    es.onopen = () => { $('conn').dataset.on = 'live'; $('connText').textContent = 'live'; };
+    es.onerror = () => { $('conn').dataset.on = ''; $('connText').textContent = 'reconnecting'; };
     es.onmessage = (m) => handle(JSON.parse(m.data));
   }
   connect();
@@ -251,26 +457,66 @@
     const r = await post('/sessions', { name: f.get('name'), prompt: f.get('prompt') });
     if (r.error) alert(r.error); else e.target.reset();
   };
+
   document.body.addEventListener('click', async (e) => {
-    const b = e.target.closest('button'); if (!b) return;
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.decide) {
+      const card = b.closest('.ask');
+      post('/decide', { session: card.dataset.session, id: card.dataset.id, decision: b.dataset.decide, scope: b.dataset.scope });
+    }
     if (b.dataset.send) { const i = document.querySelector(`[data-msg="${b.dataset.send}"]`); if (i.value.trim()) { await post('/message', { session: b.dataset.send, text: i.value }); i.value = ''; } }
     if (b.dataset.stop) await post('/stop', { session: b.dataset.stop });
     if (b.dataset.undo) { const r = await post('/undo', { session: b.dataset.undo }); if (r.error) alert(r.error); }
     if (b.dataset.post) {
-      if (!confirm('Post the recap as a comment on the open pull request for this branch, using your gh login?')) return;
+      if (!confirm('Post the record as a comment on the open pull request for this branch, using your gh login?')) return;
       b.disabled = true; b.textContent = 'Posting…';
       const r = await post('/post-recap', { session: b.dataset.post });
-      b.disabled = false; b.textContent = 'Post to PR';
+      b.disabled = false; b.textContent = 'Post';
       alert(r.error ? r.error : `Posted: ${r.url}`);
     }
     if (b.dataset.recap) {
       b.disabled = true; b.textContent = 'Building…';
       const r = await post('/recap', { session: b.dataset.recap });
-      b.disabled = false; b.textContent = 'Recap';
+      b.disabled = false; b.textContent = 'Record';
       if (r.error) alert(r.error); else window.open(r.href, '_blank');
     }
   });
-  setInterval(() => { document.querySelectorAll('[data-wait]').forEach((el) => { el.textContent = `waiting ${Math.round((Date.now() - +el.dataset.wait) / 1000)}s`; }); }, 1000);
+
+  // Keyboard first. This is a tool you sit in front of while an agent is blocked
+  // on you, so answering should never require finding a button with a mouse.
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!currentAsks.length) return;
+    const k = e.key.toLowerCase();
+    if (k === 'j' || e.key === 'ArrowDown') { focusIdx = Math.min(currentAsks.length - 1, focusIdx + 1); renderAsks(); document.querySelector('.ask.focus')?.scrollIntoView({ block: 'nearest' }); e.preventDefault(); return; }
+    if (k === 'k' || e.key === 'ArrowUp') { focusIdx = Math.max(0, focusIdx - 1); renderAsks(); document.querySelector('.ask.focus')?.scrollIntoView({ block: 'nearest' }); e.preventDefault(); return; }
+    const ask = currentAsks[focusIdx];
+    if (k === 'a') { decide(ask, 'allow', e.shiftKey ? 'always' : 'once'); e.preventDefault(); }
+    if (k === 'd') { decide(ask, 'deny', e.shiftKey ? 'always' : 'once'); e.preventDefault(); }
+  });
+
+  // One ticker for every countdown on the page.
+  function tickWaits() {
+    const limit = S.askTimeoutMs;
+    document.querySelectorAll('[data-wait]').forEach((el) => {
+      const held = Date.now() - +el.dataset.wait;
+      el.textContent = `held ${Math.round(held / 1000)}s`;
+      el.dataset.urgent = held > limit * 0.75 ? '2' : held > limit * 0.4 ? '1' : '0';
+    });
+    document.querySelectorAll('[data-wait-bar]').forEach((el) => {
+      const held = Date.now() - +el.dataset.waitBar;
+      const left = Math.max(0, limit - held);
+      const frac = Math.max(0, Math.min(1, left / limit));
+      el.querySelector('i').style.width = (frac * 100) + '%';
+      el.dataset.urgent = frac < 0.25 ? '2' : frac < 0.6 ? '1' : '0';
+      el.querySelector('.cap').textContent = left > 0
+        ? `Denied automatically in ${Math.ceil(left / 1000)}s if nobody answers.`
+        : 'Timed out. Denied, because this fails closed.';
+    });
+  }
+  setInterval(tickWaits, 1000);
+  renderAsks(); renderRules();
 </script>
 </body>
 </html>
