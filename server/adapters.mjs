@@ -362,11 +362,18 @@ export const ADAPTERS = [
       const cfg = { version: 1, hooks: {} };
       for (const [their, ours] of Object.entries(this.events)) {
         const run = cmdFor(ours);
-        // `command` is the cross-platform fallback; `bash` and `powershell` are
-        // what the runtime picks per OS. Writing all three means a Windows
-        // machine finds one whichever property it prefers — and Windows is
-        // exactly where somebody with no other option is running this.
-        cfg.hooks[their] = [{ type: 'command', command: run, bash: run, powershell: run, timeoutSec: holdFor(ours) }];
+        // Two products read this file and disagree about the key. Copilot CLI
+        // takes `bash` and `powershell`; VS Code's agent mode takes `windows`,
+        // `linux` and `osx` as per-platform overrides and does not document the
+        // other two at all. Writing both sets costs a few bytes. Guessing wrong
+        // means the hook never runs, and a hook that never runs looks exactly
+        // like a week in which nobody did any work.
+        cfg.hooks[their] = [{
+          type: 'command', command: run,
+          bash: run, powershell: run,
+          windows: run, linux: run, osx: run,
+          timeoutSec: holdFor(ours), timeout: holdFor(ours),
+        }];
       }
       writeJson(file, cfg);        // our own file; nobody else's entries to keep
       return { file };

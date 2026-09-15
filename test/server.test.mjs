@@ -201,3 +201,27 @@ test('a harness cannot ask for longer than the gate is willing to hold', async (
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(took < ASK_TIMEOUT * 2, `held ${took}ms; the cap did not apply`);
 });
+
+test('one call arriving down two hooks is asked once and answered twice', async () => {
+  // VS Code reads .claude/settings.local.json and .github/hooks/*.json both, so
+  // a repo wired for Claude Code and Copilot fires the same tool_use_id twice.
+  // Answering only the last one left the first hook hanging until the agent's
+  // own timeout, which reads as the agent freezing.
+  const id = 'double-fire-1';
+  const send = () => hook('pre-tool', base({
+    tool_name: 'Bash', tool_input: { command: 'double-probe' }, tool_use_id: id,
+  }), `?attach=test-repo`);
+
+  const both = Promise.all([send(), send()]);
+  // Give the second one time to arrive while the first is held.
+  await new Promise((r) => setTimeout(r, 300));
+
+  const state = await get('/state');
+  const waiting = state.sessions.reduce((n, s) => n + (s.pending?.length || 0), 0);
+  assert.equal(waiting, 1, 'the person was asked twice about one call');
+
+  const [a, b] = await both;
+  for (const r of [a, b]) {
+    assert.equal(r.hookSpecificOutput.permissionDecision, 'deny', 'a hook was left without an answer');
+  }
+});

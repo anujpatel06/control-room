@@ -351,7 +351,12 @@ function decide(sid, id, decision, why, scope = 'once') {
   clearTimeout(p.timer);
   s.pending.delete(id);
   if (scope === 'always') rules.set(p.key, decision === 'allow' ? 'log' : 'never');
-  p.respond(decision, why);
+  // One call can arrive down more than one hook — VS Code reads both
+  // .claude/settings.local.json and .github/hooks/*.json, so a repo wired for
+  // Claude Code and Copilot fires twice for the same tool_use_id. Everyone who
+  // asked gets the same answer; answering only the last one left the first hook
+  // hanging until the agent's own timeout, which looks like the agent freezing.
+  for (const r of p.responders) r(decision, why);
   record(sid, { type: 'decision', id, decision, why, scope, tool: p.tool, key: p.key, waitedMs: Date.now() - p.at });
   if (s.pending.size === 0 && s.state === 'waiting') s.state = 'working';
   broadcast({ type: 'session-state', session: sid, state: s.state });
@@ -440,7 +445,11 @@ const server = http.createServer(async (req, res) => {
       // else gets to decide by not answering.
       const asked = Number(url.searchParams.get('hold')) || 0;
       const holdMs = asked > 0 ? Math.min(asked, ASK_TIMEOUT_MS) : ASK_TIMEOUT_MS;
-      const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), holdMs, respond };
+      // Same call, second hook: join the question already being asked rather
+      // than replacing it, so the person is not asked twice about one thing.
+      const already = s.pending.get(id);
+      if (already) { already.responders.push(respond); return; }
+      const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), holdMs, responders: [respond] };
       item.timer = setTimeout(() => decide(sid, id, 'deny',
         `no human answer in ${Math.round(holdMs / 1000)}s; nearly fails closed`), holdMs);
       s.pending.set(id, item);
