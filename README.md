@@ -54,6 +54,12 @@ One command, in the repo you want recorded.
 npx nearly-cli
 ```
 
+> **`npx` not recognised?** It comes with Node.js, so that error means Node is
+> not installed. Get it from [nodejs.org](https://nodejs.org) or, on Windows,
+> `winget install OpenJS.NodeJS.LTS`. Then **open a new terminal** so it picks up
+> the change, and check with `node --version`. You also need Claude Code signed
+> in: Nearly gates Claude Code sessions and does nothing without one.
+
 ```
 ✓ Nearly is on for my-app
 
