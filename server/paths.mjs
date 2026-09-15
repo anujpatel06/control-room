@@ -24,6 +24,15 @@ export const dataRoot = fromCheckout
   ? pkgRoot
   : join(process.env.NEARLY_HOME || join(homedir(), '.nearly'));
 
+// A file, with its directory guaranteed to exist — including when the path came
+// from an environment variable, which is where this went wrong the first time:
+// the default path was fixed and the override was left to fail on its own.
+function dataFile(envVar, name) {
+  const f = process.env[envVar] || join(dataRoot, name);
+  try { mkdirSync(dirname(f), { recursive: true }); } catch { /* caller will report */ }
+  return f;
+}
+
 export function dataDir(...parts) {
   const p = join(dataRoot, ...parts);
   try { mkdirSync(p, { recursive: true }); } catch { /* caller will report */ }
@@ -44,5 +53,11 @@ export const paths = {
   // you work in before any session has run in it — otherwise the only repos it
   // can offer are ones that are already going, which is no help when you are
   // trying to start the first one.
-  repos: () => process.env.NEARLY_REPOS || join(dataRoot, 'repos.json'),
+  repos: () => dataFile('NEARLY_REPOS', 'repos.json'),
+  // Where records are published, so a pull-request comment can link them. This
+  // lived in the package directory, which `npm install -g` replaces wholesale:
+  // the address was quietly lost on every upgrade and the next record went out
+  // with no link. Same lesson as recordings — anything a person configured
+  // belongs in their space, not in ours.
+  config: () => dataFile('NEARLY_CONFIG', 'config.json'),
 };

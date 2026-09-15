@@ -207,20 +207,26 @@ function pagesUrl() {
 // An address already configured wins: it was either set deliberately or worked
 // out here before, and it survives the project being renamed.
 function configured() {
-  try {
-    const f = join(root, '.nearly.json');
-    if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8')).urlBase || null;
-  } catch { /* fall through */ }
+  // The legacy path is read, never written: an upgrade destroys it, so the
+  // first run after this change is the last chance to carry it forward.
+  for (const f of [paths.config(), join(root, '.nearly.json')]) {
+    try {
+      if (existsSync(f)) {
+        const u = JSON.parse(readFileSync(f, 'utf8')).urlBase;
+        if (u) return u;
+      }
+    } catch { /* try the next one */ }
+  }
   return null;
 }
 const derived = pagesUrl();
 const base = process.env.NEARLY_URL_BASE || configured() || derived;
 if (base && !off) {
   try {
-    const cfg = join(root, '.nearly.json');
+    const cfg = paths.config();
     const prev = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')) : {};
     writeFileSync(cfg, JSON.stringify({ ...prev, urlBase: base }, null, 2) + '\n');
-  } catch { /* the env var still works */ }
+  } catch (e) { notes.push(`could not save where records publish: ${e.message}`); }
 }
 
 // ---------------------------------------------------------------------------

@@ -87,7 +87,8 @@ if (adapter && adapter.normalize) {
 }
 
 try {
-  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}`, {
+  const hold = adapter?.holdMs ? `&hold=${adapter.holdMs}` : '';
+  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: payload,

@@ -15,10 +15,14 @@ import { paths } from '../server/paths.mjs';
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv[2] || '.');
 function configured() {
-  try {
-    const f = join(root, '.nearly.json');
-    if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8')).urlBase || '';
-  } catch { /* fall through to the env var */ }
+  for (const f of [paths.config(), join(root, '.nearly.json')]) {
+    try {
+      if (existsSync(f)) {
+        const u = JSON.parse(readFileSync(f, 'utf8')).urlBase;
+        if (u) return u;
+      }
+    } catch { /* try the next one */ }
+  }
   return '';
 }
 const URL_BASE = (process.env.NEARLY_URL_BASE || configured() || '').replace(/\/$/, '');

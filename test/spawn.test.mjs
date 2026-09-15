@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:
 import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 47900 + Math.floor(Math.random() * 90);
+const PORT = 49000 + Math.floor(Math.random() * 90);   // clear of resilience.test.mjs, which roams 48000-48899
 const BASE = `http://127.0.0.1:${PORT}`;
 let server, recordings, workspace;
 

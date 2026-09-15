@@ -347,3 +347,25 @@ test('turning it off forgets the repo again', () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('where records publish survives an upgrade', () => {
+  // This lived in the package directory, which `npm install -g` replaces
+  // wholesale, so the address was lost on every upgrade and the next record
+  // went out with no link to it.
+  const repo = tempRepo();
+  const home = mkdtempSync(join(tmpdir(), 'nearly-cfg-'));
+  const cfg = join(home, 'not', 'made', 'yet', 'config.json');
+  try {
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], {
+      encoding: 'utf8',
+      env: { ...sandboxed(), NEARLY_CONFIG: cfg, NEARLY_URL_BASE: 'https://example.test/records' },
+    });
+    assert.equal(r.status, 0);
+    assert.equal(JSON.parse(readFileSync(cfg, 'utf8')).urlBase, 'https://example.test/records');
+    assert.equal(existsSync(join(root, '.nearly.json')), false,
+      'still writing into the package, where the next upgrade deletes it');
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});

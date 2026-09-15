@@ -121,6 +121,7 @@
 
   /* ---------- fleet ---------- */
   .new { margin: 0 12px 14px; display: grid; gap: 7px; }
+  .new[hidden] { display: none; }
   .formErr { margin: 0; font-size: 12px; line-height: 1.45; color: var(--deny); }
   .fleet { padding: 0 12px 18px; display: grid; gap: 8px; }
   .agent {
@@ -239,7 +240,7 @@
 <main>
   <div class="col">
     <div class="col-h"><span class="lbl">Agents</span><span class="count" id="fleetCount">0</span></div>
-    <form class="new" id="newForm">
+    <form class="new" id="newForm" hidden>
       <input name="name" placeholder="Name, e.g. docs" required autocomplete="off">
       <input name="repo" id="repoField" placeholder="Repo to branch from" list="repoList" autocomplete="off">
       <datalist id="repoList"></datalist>
@@ -264,6 +265,10 @@
 </main>
 
 <script>
+  // Lab mode — starting agents from the dashboard — is a different job from
+  // watching your own sessions be gated. It is the demo, not the product, so it
+  // is off unless asked for.
+  const LAB = new URLSearchParams(location.search).has('lab');
   const S = { sessions: new Map(), rules: {}, defaults: {}, askTimeoutMs: 120000 };
   const $ = (id) => document.getElementById(id);
   const fmtT = (ms) => new Date(ms).toLocaleTimeString([], { hour12: false });
@@ -317,7 +322,19 @@
         </div>`;
       el.appendChild(d);
     }
-    if (!S.sessions.size) el.innerHTML = '<div class="empty">No agents yet. Start one above and it runs on your Claude subscription, in its own git worktree.</div>';
+    if (!S.sessions.size) {
+      // What a person who just installed this is actually waiting for is their
+      // own next session, not a button. Saying otherwise taught the wrong
+      // product on the first screen anybody sees.
+      el.innerHTML = LAB
+        ? '<div class="empty">No agents yet. Start one above and it runs on your Claude subscription, on its own branch.</div>'
+        : `<div class="empty"><b>No sessions yet.</b>
+             Work as you normally would. Every session you run in a repo you have turned
+             Nearly on for appears here, and anything that needs you shows up alongside.
+             <div class="keys"><span><kbd>nearly agents</kbd><span>what is gated in a repo</span></span>
+             <span><kbd>nearly lab</kbd><span>start an agent from here instead</span></span></div>
+           </div>`;
+    }
   }
 
   function renderAsks() {
@@ -353,7 +370,7 @@
           <span class="tool">${esc(p.tool)}</span>
           <span class="who">${esc(p.sname)}</span>
           <span class="tag" title="Always and Never attach to this key">${esc(p.key || p.tool)}</span>
-          <span class="clock" data-wait="${p.at}"></span>
+          <span class="clock" data-wait="${p.at}" data-limit="${p.holdMs || ''}"></span>
         </div>
         <pre>${esc(prettyInput(p.tool, p.input))}</pre>
         <div class="blast"><span class="ic">▲</span><span>${blast(p.tool)}</span></div>
@@ -363,7 +380,7 @@
           <button data-v="deny" data-decide="deny" data-scope="once">Deny<kbd>D</kbd></button>
           <button data-v="deny" data-decide="deny" data-scope="always" title="Never allow ${esc(p.key || p.tool)} again this run">Never<kbd>⇧D</kbd></button>
         </div>
-        <div class="deadline" data-wait-bar="${p.at}">
+        <div class="deadline" data-wait-bar="${p.at}" data-limit="${p.holdMs || ''}">
           <div class="bar"><i></i></div>
           <div class="cap"></div>
         </div>
@@ -455,6 +472,8 @@
   }
   connect();
 
+  if (LAB) $('newForm').hidden = false;
+
   $('newForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -518,13 +537,17 @@
 
   // One ticker for every countdown on the page.
   function tickWaits() {
-    const limit = S.askTimeoutMs;
+    // Each request carries its own deadline: some harnesses will not wait as
+    // long as the rest, and a bar that drains at the wrong rate is worse than
+    // no bar.
     document.querySelectorAll('[data-wait]').forEach((el) => {
+      const limit = +el.dataset.limit || S.askTimeoutMs;
       const held = Date.now() - +el.dataset.wait;
       el.textContent = `held ${Math.round(held / 1000)}s`;
       el.dataset.urgent = held > limit * 0.75 ? '2' : held > limit * 0.4 ? '1' : '0';
     });
     document.querySelectorAll('[data-wait-bar]').forEach((el) => {
+      const limit = +el.dataset.limit || S.askTimeoutMs;
       const held = Date.now() - +el.dataset.waitBar;
       const left = Math.max(0, limit - held);
       const frac = Math.max(0, Math.min(1, left / limit));

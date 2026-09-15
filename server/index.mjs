@@ -67,7 +67,7 @@ function summary(s) {
   };
 }
 function pendingView(p) {
-  return { id: p.id, session: p.sid, tool: p.tool, input: p.input, tier: p.tier, reason: p.reason, key: p.key, at: p.at };
+  return { id: p.id, session: p.sid, tool: p.tool, input: p.input, tier: p.tier, reason: p.reason, key: p.key, at: p.at, holdMs: p.holdMs };
 }
 
 function hooksSettings(sid) {
@@ -419,8 +419,14 @@ const server = http.createServer(async (req, res) => {
       if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('deny', `never (${reason})`); }
       if (tier === 'log') { record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('allow', `do and log (${reason})`); }
       // ask: hold the response until the UI decides, or fail closed
-      const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), respond };
-      item.timer = setTimeout(() => decide(sid, id, 'deny', 'no human answer; nearly fails closed'), ASK_TIMEOUT_MS);
+      // A harness may say it will not wait as long as we would. It can shorten
+      // the deadline, never lengthen it: the point of the cap is that nobody
+      // else gets to decide by not answering.
+      const asked = Number(url.searchParams.get('hold')) || 0;
+      const holdMs = asked > 0 ? Math.min(asked, ASK_TIMEOUT_MS) : ASK_TIMEOUT_MS;
+      const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), holdMs, respond };
+      item.timer = setTimeout(() => decide(sid, id, 'deny',
+        `no human answer in ${Math.round(holdMs / 1000)}s; nearly fails closed`), holdMs);
       s.pending.set(id, item);
       s.state = 'waiting';
       record(sid, { type: 'ask', ...pendingView(item) });

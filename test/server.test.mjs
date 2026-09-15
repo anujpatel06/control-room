@@ -174,3 +174,30 @@ test('every other hook answers 200 with JSON, whatever it is sent', async () => 
   });
   assert.equal(malformed.status, 200, 'malformed input must not produce an error status');
 });
+
+test('a harness that will not wait long gets an answer before it gives up', async () => {
+  // Windsurf cannot be told how long a hook may take, and it treats an
+  // abandoned pre-hook as permission to proceed. If we held past its limit the
+  // call would be allowed — by Windsurf, silently, with nothing in the record.
+  // So the adapter shortens the deadline and we deny inside it.
+  const began = Date.now();
+  const r = await hook('pre-tool', base({
+    tool_name: 'Bash', tool_input: { command: 'deadline-probe-a' }, tool_use_id: 'short1',
+  }), `?attach=test-repo&hold=400`);
+  const took = Date.now() - began;
+  assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(took < ASK_TIMEOUT, `held ${took}ms, past the ${ASK_TIMEOUT}ms the harness would wait`);
+  assert.match(r.hookSpecificOutput.permissionDecisionReason, /fails closed/);
+});
+
+test('a harness cannot ask for longer than the gate is willing to hold', async () => {
+  // The cap exists so nobody decides by not answering. A harness asking for an
+  // hour would hand that decision back to whoever wired the config.
+  const began = Date.now();
+  const r = await hook('pre-tool', base({
+    tool_name: 'Bash', tool_input: { command: 'deadline-probe-b' }, tool_use_id: 'long1',
+  }), `?attach=test-repo&hold=3600000`);
+  const took = Date.now() - began;
+  assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(took < ASK_TIMEOUT * 2, `held ${took}ms; the cap did not apply`);
+});

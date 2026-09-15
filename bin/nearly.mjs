@@ -4,6 +4,7 @@
 //   nearly              turn it on for the repo you are in
 //   nearly off          turn it off again
 //   nearly open         open the dashboard
+//   nearly lab          open it with the panel for starting agents
 //   nearly record       build the record for the current branch
 //   nearly post         put that record on the pull request
 //   nearly agents       which agents this repo is gated for
@@ -86,8 +87,10 @@ switch (cmd) {
     return run(join(root, 'server', 'index.mjs'), rest);
   }
 
-  case 'open': {
-    const url = 'http://127.0.0.1:47653';
+  case 'lab': case 'open': {
+    // `open` is the gate: your sessions and what needs you. `lab` adds the
+    // panel for starting agents from here, which is a different job.
+    const url = 'http://127.0.0.1:47653' + (cmd === 'lab' ? '/?lab=1' : '');
     spawn(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open',
       [url], { stdio: 'ignore', detached: true, shell: process.platform === 'win32' }).unref();
     console.log(url);
@@ -99,6 +102,7 @@ switch (cmd) {
   nearly              turn it on for the repo you are in
   nearly off          turn it off again
   nearly open         open the dashboard
+  nearly lab          open it with the panel for starting agents
   nearly record       build the record for the current branch
   nearly post         put that record on the pull request
   nearly agents       which agents this repo is gated for

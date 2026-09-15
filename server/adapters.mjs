@@ -534,6 +534,13 @@ export const ADAPTERS = [
     name: 'Windsurf',
     verified: null,
     config: '.windsurf/hooks.json',
+    // Windsurf is the only harness with no way to say how long a hook may take,
+    // and an abandoned pre-hook does not block — Cascade treats anything but
+    // exit 2 as "proceed". So a request held past whatever Cascade's own limit
+    // is would be allowed, by Cascade, silently. Decide well inside any
+    // plausible limit instead: a deny we issue is recorded and explains itself,
+    // where a timeout we lose is an allow nobody chose.
+    holdMs: 20_000,
     // The odd one out twice over. Windsurf has no JSON answer at all — a pre
     // hook blocks by exiting 2 with the reason on stderr — and it has no single
     // pre-tool event, so the gate is spread across three.
