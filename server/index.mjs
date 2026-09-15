@@ -140,6 +140,16 @@ function createSession({ name, prompt }) {
     '--name', safe,
   ];
   const proc = spawn('claude', args, { cwd: worktree, stdio: ['pipe', 'pipe', 'pipe'] });
+  // An unhandled spawn error would take the whole server down and every other
+  // session with it. The usual cause is Claude Code not being on PATH.
+  proc.on('error', (e) => {
+    const why = e.code === 'ENOENT'
+      ? 'Claude Code is not on PATH. Install it, or check `which claude`.'
+      : e.message;
+    record(id, { type: 'stderr', text: `could not start the agent: ${why}` });
+    s.state = 'exited';
+    broadcast({ type: 'session-state', session: id, state: s.state });
+  });
 
   const s = {
     id, name: safe, branch, worktree, proc, state: 'starting', turns: 0, lastText: '', currentTool: null,
@@ -533,6 +543,14 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(res, 400, { error: String(e.message).slice(0, 300) }); }
   }
   json(res, 404, { error: 'not found' });
+});
+
+// Hooks start this on demand, so two tool calls arriving together can both try.
+// The loser is not an error: the winner is already serving.
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') process.exit(0);
+  console.error(`control room: ${e.message}`);
+  process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {

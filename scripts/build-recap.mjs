@@ -460,6 +460,11 @@ const TIER_RANK = { Premium: 0, Enhanced: 1, Compact: 2 };
 const byTier = (a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier];
 
 if (LIST_VOICES) {
+  if (process.platform !== 'darwin') {
+    console.log(`No system voices: ${process.platform} has no say(1).`);
+    console.log('Record your own instead: --script writes the lines, --voice-dir uses your recordings.');
+    process.exit(0);
+  }
   const all = installedVoices().filter((v) => /^en_/.test(v.locale));
   const by = { Premium: [], Enhanced: [], Compact: [] };
   for (const v of all) by[v.tier].push(v.name);
@@ -491,7 +496,16 @@ function recordedLine(dir, i) {
   return null;
 }
 
+// say(1) and afconvert are macOS. Everywhere else the record is still built,
+// still correct and still readable; it just has captions instead of a voice.
+const CAN_SPEAK = process.platform === 'darwin';
+
 function narrate(sb) {
+  if (!CAN_SPEAK) {
+    console.log(`narration: skipped, ${process.platform} has no say(1). The record reads fine without it;`);
+    console.log('  supply your own with --voice-dir, or use --no-audio to stop this notice.');
+    return 0;
+  }
   const tmp = join(tmpdir(), `recap-${sb.id.slice(0, 8)}`);
   mkdirSync(tmp, { recursive: true });
   let ok = 0, read = 0;

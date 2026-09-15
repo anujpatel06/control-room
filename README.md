@@ -20,6 +20,12 @@ Nothing to run. This is a real record from two real agent sessions on one branch
 
 Watch the first thirty seconds. The cover says what the diff cannot: an action the supervisor refused, a push policy blocked, and a file deletion refused. [Here is how it looks on the pull request.](https://github.com/anujpatel06/tempo-demo/pull/2)
 
+## What it needs
+
+Node 18 or newer, Claude Code signed in, and git. No dependencies and no API key: agents run on your existing Claude subscription.
+
+Gating, recording and the record itself work on macOS, Linux and Windows. **Spoken narration is macOS only**, because it uses the built-in `say`. Elsewhere the record is built the same way and reads from its captions, or you can supply your own recordings with `--voice-dir`.
+
 ## Use it on your own repo
 
 One command, in the repo you want recorded.
