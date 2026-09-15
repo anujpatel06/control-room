@@ -348,7 +348,15 @@ const server = http.createServer(async (req, res) => {
     const sid = sidResolved;
 
     if (ev === 'session-start') {
-      if (s) { s.state = 'working'; s.model = hook.model || modelFromTranscript(hook.transcript_path) || null; record(sid, { type: 'init', model: s.model || 'claude code', claudeSession: hook.session_id, apiKeySource: 'attached' }); broadcast({ type: 'session-state', session: sid, state: s.state }); }
+      if (s) {
+        s.state = 'working';
+        s.model = hook.model || modelFromTranscript(hook.transcript_path) || null;
+        // Only claim a model once we actually know one. The transcript does not
+        // exist yet on the very first event, and a placeholder here would be the
+        // name the record ends up showing.
+        if (s.model) record(sid, { type: 'init', model: s.model, claudeSession: hook.session_id, apiKeySource: 'attached' });
+        broadcast({ type: 'session-state', session: sid, state: s.state });
+      }
       return hookOk(res);
     }
     if (ev === 'prompt') {
@@ -422,6 +430,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- UI API ----
+  // Cheap liveness check: the hook launcher calls this before every tool call.
+  if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, sessions: sessions.size });
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(fs.readFileSync(UI));

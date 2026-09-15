@@ -1,0 +1,124 @@
+{
+  "id": "a1568ef4-489a-4e06-8d1c-f84e2db08f2d",
+  "name": "priya-app",
+  "branch": "feat/cold-start",
+  "runs": 1,
+  "cwd": "/private/tmp/claude-501/-Users-anujpatel-Portfolio/81d4d6ad-536f-479c-9c15-12c66bb87e72/scratchpad/priya-app",
+  "attached": true,
+  "model": "claude code",
+  "date": "15 Sept 2026",
+  "startedAt": 1789484028931,
+  "durationS": 33.714,
+  "humanWaitS": 13.527,
+  "avatar": "AP",
+  "author": "Anuj",
+  "audience": "reviewer",
+  "supervisor": "Anuj",
+  "voice": null,
+  "generatedAt": "2026-09-15T14:54:58.164Z",
+  "scenes": [
+    {
+      "kind": "cover",
+      "title": "1 decision by Anuj, 1 turn",
+      "runs": 1,
+      "orient": "An agent wrote the branch you are about to review. This is what happened while it was writing it — including the things it was stopped from doing, which the diff cannot show you.",
+      "repo": "priya-app",
+      "branch": "feat/cold-start",
+      "stats": [
+        [
+          "Ran for",
+          "34s",
+          ""
+        ],
+        [
+          "Waiting on a human",
+          "13.5s",
+          "ask"
+        ],
+        [
+          "Tool calls",
+          "1",
+          ""
+        ],
+        [
+          "Asked Anuj",
+          "1",
+          ""
+        ],
+        [
+          "Refused",
+          "0",
+          ""
+        ],
+        [
+          "Rolled back",
+          "0",
+          ""
+        ]
+      ],
+      "narration": "Agent priya-app ran for 34 seconds under Anuj's supervision. 1 tool call, 1 held for a decision, 0 refused.",
+      "durS": 8.507692307692308
+    },
+    {
+      "kind": "intent",
+      "text": "Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.",
+      "ordinal": null,
+      "of": null,
+      "narration": "The task Anuj gave it, word for word: Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.",
+      "durS": 13.123076923076923
+    },
+    {
+      "kind": "decision",
+      "tool": "Write",
+      "key": "Write:.md",
+      "tier": "ask",
+      "input": "/private/tmp/claude-501/-Users-anujpatel-Portfolio/81d4d6ad-536f-479c-9c15-12c66bb87e72/scratchpad/priya-app/HELLO.md\n# Hello\n",
+      "blast": "Changes a file in the worktree. Reversible with Undo (git).",
+      "decision": "allow",
+      "scope": "once",
+      "waitedS": "13.5",
+      "why": "human allow (once)",
+      "resultPreview": null,
+      "resultError": false,
+      "narration": "It asked to write HELLO.md. Anuj allowed it after 13.5 seconds.",
+      "durS": 5.430769230769231
+    },
+    {
+      "kind": "diff",
+      "turn": 1,
+      "sha": null,
+      "msg": "turn 1: Created HELLO.md with the line `# Hello`.",
+      "stat": [
+        {
+          "file": "HELLO.md",
+          "add": 0,
+          "del": 0,
+          "untracked": true
+        }
+      ],
+      "patch": {
+        "text": "",
+        "truncated": false,
+        "total": 1
+      },
+      "narration": "That round of work changed 1 file: 0 lines added, 0 removed.",
+      "durS": 5.815384615384615
+    },
+    {
+      "kind": "outcome",
+      "task": "Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.",
+      "report": "Created HELLO.md with the line `# Hello`.",
+      "notDone": [],
+      "head": null,
+      "narration": "The agent reported: Created HELLO.md with the line `# Hello`.",
+      "durS": 5.046153846153846
+    },
+    {
+      "kind": "credits",
+      "narration": "That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.",
+      "durS": 10.046153846153846
+    }
+  ],
+  "kind": "branch",
+  "totalS": 47.96923076923076
+}

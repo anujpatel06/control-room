@@ -13,7 +13,14 @@ import { createInterface } from 'node:readline';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv[2] || '.');
-const URL_BASE = (process.env.RECAP_URL_BASE || '').replace(/\/$/, '');
+function configured() {
+  try {
+    const f = join(root, '.control-room.json');
+    if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8')).urlBase || '';
+  } catch { /* fall through to the env var */ }
+  return '';
+}
+const URL_BASE = (process.env.RECAP_URL_BASE || configured() || '').replace(/\/$/, '');
 // Narration takes about a second a scene, which is too long to make someone
 // wait at a push. Opt in with RECAP_AUDIO=1 when you are making the good one.
 const WANT_AUDIO = process.env.RECAP_AUDIO === '1';

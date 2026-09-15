@@ -22,20 +22,36 @@ Watch the first thirty seconds. The cover says what the diff cannot: an action t
 
 ## Use it on your own repo
 
-Five commands, once. Node 18 or newer, and Claude Code already signed in.
+One command, in the repo you want recorded.
 
 ```bash
-git clone https://github.com/anujpatel06/control-room && cd control-room
-node server/index.mjs                              # leave this running
+cd ~/code/my-app
+control-room
 ```
 
-Then, in a second terminal, once per repo you want recorded:
+```
+✓ Control Room is on for my-app
+
+  · every Claude Code session here is gated and recorded
+  · the record is offered when you push
+  · records publish to https://you.github.io/control-room/recaps
+
+  Now just work. Requests that need you appear at http://127.0.0.1:47653
+  Nothing to leave running. Turn it off again with --off.
+```
+
+It installs the Claude Code hooks and the git pre-push hook, and works out where records publish by reading the Control Room's own remote. Nothing to configure. `control-room off` removes all of it.
+
+**To get that command,** until this is on npm:
 
 ```bash
-node scripts/attach.mjs        ~/code/my-app       # gate and record its sessions
-node scripts/install-push-hook.mjs ~/code/my-app   # offer the record at git push
-export RECAP_URL_BASE=https://<you>.github.io/control-room/recaps
+git clone https://github.com/anujpatel06/control-room ~/control-room
+npm link --prefix ~/control-room
 ```
+
+No dependencies, so the link is instant. Once published it becomes `npx control-room` with nothing to clone at all.
+
+**There is no server to start.** The hooks start it the first time they need it, in about a second, and it stays up. If it cannot start, Claude Code falls back to its own permission prompts and your session continues. Nothing to remember and nothing to break.
 
 ## Then work normally
 
@@ -47,7 +63,9 @@ Nothing about how you work changes. Open the repo in VS Code or a terminal, star
 4. **At `git push`** the hook merges every session on that branch, prints what was refused, and asks whether to post it. Say no and the push just continues.
 5. **Your reviewer opens the pull request** and the record is there, as one comment that updates on every push rather than a new one each time.
 
-If the server is not running, Claude Code falls back to its own prompts and nothing breaks. Attach fails open on purpose.
+### For a team
+
+`.claude/settings.local.json` is per-person and stays out of git, which is right while you are trying it. To turn it on for everyone, move the same hooks into `.claude/settings.json` and commit that file. Once this is on npm the hooks invoke `npx control-room`, so a teammate who clones the repo needs nothing installed beyond Node.
 
 ## Why the gate is not the point
 
@@ -170,7 +188,7 @@ node scripts/publish-pages.mjs --base https://<user>.github.io/<repo>
 
 That copies every built recap into `docs/recaps/` and writes `docs/index.html`, an index of the sessions on record. Commit `docs/`, then set **Settings → Pages → branch `main`, folder `/docs`**. Preview it locally first at http://127.0.0.1:47653/docs/ while the server is running.
 
-## Why the hook must answer fast
+## Why the hook fails open
 
 Claude Code treats a hook that times out, errors, or returns anything other than `200` with JSON as a non-blocking error and lets the tool call proceed. So this server always answers with JSON, holds "ask" calls for at most `ASK_TIMEOUT_MS`, and denies when nobody decides. The hook's own timeout is set longer than that.
 

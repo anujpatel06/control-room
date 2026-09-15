@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>priya-app · 1 decision by Anuj, 1 turn · Control Room recap</title>
+<meta name="description" content="Recap of a Control Room session: Agent priya-app ran for 34 seconds under Anuj's supervision. 1 tool call, 1 held for a decision, 0 refused.">
+<meta property="og:title" content="priya-app · 1 decision by Anuj, 1 turn">
+<meta property="og:description" content="Recap of a Control Room session: Agent priya-app ran for 34 seconds under Anuj's supervision. 1 tool call, 1 held for a decision, 0 refused.">
+<meta property="og:type" content="video.other">
+<meta name="twitter:card" content="summary">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:        #0B0D11;
+    --panel:     #13161C;
+    --panel-2:   #191D25;
+    --rule:      #242932;
+    --rule-soft: #1B1F27;
+    --ink:       #E9ECF1;
+    --ink-mute:  #98A1AF;
+    --ink-faint: #667080;
+    --allow:     #3DD68C;
+    --deny:      #FF7A7A;
+    --ask:       #FFC145;
+    --auto:      #667080;
+    --accent:    #7C8CFF;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; letter-spacing: -0.006em;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lbl {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .shell { max-width: 960px; margin: 0 auto; padding: 24px 20px 56px; display: flex; flex-direction: column; gap: 14px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+  .chip {
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .1em;
+    padding: 2px 7px; border: 1px solid var(--rule); border-radius: 3px; color: var(--ink-mute);
+  }
+  .chip[data-tone="recap"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .meta { font-size: 12px; color: var(--ink-mute); display: flex; gap: 14px; flex-wrap: wrap; }
+
+  /* progress */
+  .prog { display: flex; gap: 4px; height: 4px; }
+  .seg { flex: 1; background: var(--rule); border-radius: 2px; overflow: hidden; cursor: pointer; position: relative; }
+  .seg > i { display: block; height: 100%; width: 0; background: var(--ink); }
+  .seg[data-tone="deny"] > i { background: var(--deny); }
+  .seg[data-tone="allow"] > i { background: var(--allow); }
+  .seg[data-tone="undo"] > i { background: var(--accent); }
+
+  /* stage */
+  .stage {
+    position: relative; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px;
+    aspect-ratio: 16 / 9; min-height: 440px; overflow: hidden;
+  }
+  .scene { position: absolute; inset: 0; padding: 34px 38px; overflow: auto; display: flex; flex-direction: column; gap: 16px; animation: in .35s ease-out; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .eyebrow { display: flex; align-items: center; gap: 10px; }
+  .idx { position: absolute; top: 14px; left: 16px; z-index: 2; }
+  .avatar {
+    position: absolute; top: 14px; right: 16px; z-index: 2; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--rule); display: grid; place-items: center;
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .06em; color: var(--ink);
+  }
+  .avatar[data-speaking="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+  .title { font-size: clamp(23px, 3.5vw, 36px); font-weight: 700; letter-spacing: -.03em; line-height: 1.15; margin: 0; max-width: 20ch; }
+  .sub { color: var(--ink-mute); font-size: 14px; max-width: 64ch; }
+  /* one line telling a reviewer with no context what they are looking at */
+  .orient { margin: 0; font-size: 15.5px; line-height: 1.5; color: var(--ink); max-width: 58ch; border-left: 2px solid var(--accent); padding-left: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; margin-top: auto; }
+  .stat { background: var(--panel); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .stat-v { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .stat-v[data-tone="deny"] { color: var(--deny); }
+  .stat-v[data-tone="ask"] { color: var(--ask); }
+  .stat-v[data-tone="undo"] { color: var(--accent); }
+
+  .quote {
+    font-size: clamp(15px, 1.9vw, 19px); line-height: 1.5; color: var(--ink); max-width: 62ch;
+    border-left: 2px solid var(--accent); padding: 4px 0 4px 18px; white-space: pre-wrap;
+  }
+
+  .rows { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 90px 1fr auto; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); background: var(--panel); }
+  .row:last-child { border-bottom: none; }
+  .row .t { font-weight: 500; }
+  .row .s { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag {
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 2px; border: 1px solid; white-space: nowrap;
+  }
+  .tag[data-k="ask"]   { color: var(--ask);   border-color: color-mix(in srgb, var(--ask) 40%, transparent); }
+  .tag[data-k="allow"] { color: var(--allow); border-color: color-mix(in srgb, var(--allow) 40%, transparent); }
+  .tag[data-k="deny"]  { color: var(--deny);  border-color: color-mix(in srgb, var(--deny) 40%, transparent); }
+  .tag[data-k="auto"]  { color: var(--auto);  border-color: var(--rule); }
+  .tag[data-k="info"]  { color: var(--accent);border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .tag[data-k="never"] { color: var(--deny); border-color: var(--deny); background: color-mix(in srgb, var(--deny) 12%, transparent); }
+
+  /* the ask card, as it appeared */
+  .card { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--panel-2); display: flex; flex-direction: column; }
+  .card-h { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); }
+  .card-h .tool { font-weight: 600; }
+  .card-h .key { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--ink-mute); }
+  .card pre {
+    margin: 0; padding: 12px 14px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.5;
+    color: var(--ink); background: var(--bg); white-space: pre-wrap; word-break: break-word; max-height: 190px; overflow: auto;
+  }
+  .card .blast { padding: 9px 14px; font-size: 12px; color: var(--ink-mute); border-top: 1px solid var(--rule-soft); }
+  .stamp {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--rule-soft);
+    animation: stamp .3s ease-out 1.1s both;
+  }
+  @keyframes stamp { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+  .stamp .big { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; font-weight: 500; }
+  .stamp[data-d="allow"] .big { color: var(--allow); }
+  .stamp[data-d="deny"]  .big { color: var(--deny); }
+  .stamp[data-d="deny"], .stamp[data-d="never"] { background: color-mix(in srgb, var(--deny) 7%, transparent); }
+  .stamp[data-d="never"] .big { color: var(--deny); }
+  .stamp .wait { font-size: 12px; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+  .stamp .res { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--ink-mute); margin-left: auto; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stamp .res[data-err="true"] { color: var(--deny); }
+
+  /* diff */
+  .diffwrap { display: grid; grid-template-columns: 220px 1fr; gap: 12px; min-height: 0; flex: 1; }
+  .files { display: flex; flex-direction: column; gap: 6px; }
+  .file { display: flex; justify-content: space-between; gap: 8px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 3px; background: var(--panel-2); }
+  .file .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .a { color: var(--allow); } .file .d { color: var(--deny); }
+  .patch {
+    margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.5; background: var(--bg);
+    border: 1px solid var(--rule); border-radius: 3px; overflow: auto; padding: 10px 0; max-height: 300px;
+  }
+  .patch div { padding: 0 14px; white-space: pre; }
+  .patch .add { background: color-mix(in srgb, var(--allow) 10%, transparent); color: var(--allow); }
+  .patch .del { background: color-mix(in srgb, var(--deny) 10%, transparent); color: var(--deny); }
+  .patch .hunk { color: var(--accent); opacity: .8; }
+  .patch .hdr { color: var(--ink-faint); }
+  .patch .more { color: var(--ink-faint); font-style: italic; padding-top: 6px; }
+  .reverted { position: relative; }
+  .reverted .patch { opacity: .55; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .reverted::after {
+    content: "REVERTED"; position: absolute; right: 14px; top: 10px; z-index: 1;
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .14em;
+    color: var(--accent); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 2px;
+    background: var(--bg);
+  }
+
+  /* outcome */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; min-height: 0; }
+  .col { border: 1px solid var(--rule); border-radius: 3px; background: var(--panel-2); display: flex; flex-direction: column; min-height: 0; }
+  .col .lbl { padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); }
+  .col .body { padding: 12px 14px; font-size: 13px; line-height: 1.55; overflow: auto; white-space: pre-wrap; color: var(--ink); }
+  .notdone { display: flex; flex-direction: column; gap: 6px; }
+  .notdone .row { grid-template-columns: auto 1fr; border: 1px solid color-mix(in srgb, var(--deny) 30%, transparent); border-radius: 3px; }
+
+  .credits { justify-content: center; align-items: center; text-align: center; gap: 12px; }
+  .credits .big-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--rule); display: grid; place-items: center; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 16px; letter-spacing: .06em; }
+  .credits .links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; font-size: 13px; }
+
+  /* overlay */
+  .overlay { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(2px); }
+  .overlay button { font-size: 15px; padding: 12px 26px; }
+  .overlay .hint { margin-top: 10px; font-size: 12px; color: var(--ink-mute); text-align: center; }
+  .overlay[hidden] { display: none; }
+
+  /* caption + controls */
+  .caption { min-height: 52px; font-size: clamp(15px, 1.8vw, 17px); line-height: 1.5; color: var(--ink); max-width: 80ch; overflow-wrap: anywhere; }
+  .caption b { color: var(--accent); font-weight: 500; }
+  .ctrls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em;
+    color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--rule); border-radius: 7px; padding: 7px 13px; cursor: pointer;
+  }
+  button:hover { background: var(--rule); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[data-primary] { background: var(--accent); color: #0B0D11; border-color: var(--accent); font-weight: 600; }
+  button[data-primary]:hover { background: #8F9CFF; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .clock { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-mute); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .foot { font-size: 12px; color: var(--ink-faint); }
+
+  /* grid and flex children must be allowed to shrink, or long tokens push the stage sideways */
+  .cols, .col, .diffwrap, .diffwrap > *, .row > *, .files, .file, .card, .stamp > * { min-width: 0; }
+  .stamp { flex-wrap: wrap; }
+
+  @media (max-width: 720px) {
+    .scene { padding: 44px 18px 18px; }
+    .diffwrap, .cols { grid-template-columns: 1fr; }
+    .stage { aspect-ratio: auto; min-height: 520px; }
+    .row { grid-template-columns: 70px 1fr auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <h1>Control Room</h1>
+      <span class="chip" data-tone="recap">SESSION RECORD</span>
+      <span class="chip mono" id="hName">—</span>
+      <span class="chip mono" id="hModel">—</span>
+    </div>
+    <div class="meta"><span id="hSup"></span><span id="hDate"></span><a href="../replay.html" id="hReplay">Full replay →</a></div>
+  </header>
+
+  <div class="prog" id="prog" role="list" aria-label="Scenes"></div>
+
+  <div class="stage" id="stage">
+    <span class="lbl idx" id="idx"></span>
+    <div class="avatar" id="avatar" title="Narrator">—</div>
+    <div id="sceneHost"></div>
+    <div class="overlay" id="overlay">
+      <div>
+        <button data-primary id="start">▶ Play recap</button>
+        <div class="hint" id="hint"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption" id="caption"></div>
+
+  <div class="ctrls">
+    <button data-primary id="play">Play</button>
+    <button id="prev" title="Previous scene (←)">‹</button>
+    <button id="next" title="Next scene (→)">›</button>
+    <button id="mute" title="Mute (m)" aria-pressed="false">Sound on</button>
+    <span class="clock" id="clock">0:00 / 0:00</span>
+  </div>
+
+  <p class="foot" id="foot"></p>
+
+</div>
+
+<script>
+const R = {"id":"a1568ef4-489a-4e06-8d1c-f84e2db08f2d","name":"priya-app","branch":"feat/cold-start","runs":1,"cwd":"/private/tmp/claude-501/-Users-anujpatel-Portfolio/81d4d6ad-536f-479c-9c15-12c66bb87e72/scratchpad/priya-app","attached":true,"model":"claude code","date":"15 Sept 2026","startedAt":1789484028931,"durationS":33.714,"humanWaitS":13.527,"avatar":"AP","author":"Anuj","audience":"reviewer","supervisor":"Anuj","voice":null,"generatedAt":"2026-09-15T14:54:58.164Z","scenes":[{"kind":"cover","title":"1 decision by Anuj, 1 turn","runs":1,"orient":"An agent wrote the branch you are about to review. This is what happened while it was writing it — including the things it was stopped from doing, which the diff cannot show you.","repo":"priya-app","branch":"feat/cold-start","stats":[["Ran for","34s",""],["Waiting on a human","13.5s","ask"],["Tool calls","1",""],["Asked Anuj","1",""],["Refused","0",""],["Rolled back","0",""]],"narration":"Agent priya-app ran for 34 seconds under Anuj's supervision. 1 tool call, 1 held for a decision, 0 refused.","durS":8.507692307692308},{"kind":"intent","text":"Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.","ordinal":null,"of":null,"narration":"The task Anuj gave it, word for word: Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.","durS":13.123076923076923},{"kind":"decision","tool":"Write","key":"Write:.md","tier":"ask","input":"/private/tmp/claude-501/-Users-anujpatel-Portfolio/81d4d6ad-536f-479c-9c15-12c66bb87e72/scratchpad/priya-app/HELLO.md\n# Hello\n","blast":"Changes a file in the worktree. Reversible with Undo (git).","decision":"allow","scope":"once","waitedS":"13.5","why":"human allow (once)","resultPreview":null,"resultError":false,"narration":"It asked to write HELLO.md. Anuj allowed it after 13.5 seconds.","durS":5.430769230769231},{"kind":"diff","turn":1,"sha":null,"msg":"turn 1: Created HELLO.md with the line `# Hello`.","stat":[{"file":"HELLO.md","add":0,"del":0,"untracked":true}],"patch":{"text":"","truncated":false,"total":1},"narration":"That round of work changed 1 file: 0 lines added, 0 removed.","durS":5.815384615384615},{"kind":"outcome","task":"Use the Write tool to create a file called HELLO.md containing one line: # Hello. Then report in one sentence what you did.","report":"Created HELLO.md with the line `# Hello`.","notDone":[],"head":null,"narration":"The agent reported: Created HELLO.md with the line `# Hello`.","durS":5.046153846153846},{"kind":"credits","narration":"That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.","durS":10.046153846153846}],"kind":"branch","totalS":47.96923076923076};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const mmss = (s) => { s = Math.max(0, Math.round(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const T = (k, t) => `<span class="tag" data-k="${k}">${esc(t)}</span>`;
+// A reviewer was not in the room, so name the supervisor instead of saying "you".
+const REV = R.audience !== 'supervisor';
+const SUPN = R.supervisor || 'the supervisor';
+const saidNo = REV ? `${SUPN} said no` : 'you said no';
+const askedFor = REV ? `${SUPN} asked for` : 'You asked';
+
+const SC = R.scenes;
+const TOTAL = R.totalS;
+const startAt = SC.map((s, i) => SC.slice(0, i).reduce((n, x) => n + x.durS, 0));
+const hasAudio = SC.some((s) => s.audio);
+
+// ---------------------------------------------------------------------------
+// renderers: one per scene kind
+// ---------------------------------------------------------------------------
+function patchHtml(p) {
+  if (!p) return `<div class="sub">Diff not available: the worktree is gone.</div>`;
+  const lines = p.text.split('\n').map((l) => {
+    const cls = l.startsWith('+++') || l.startsWith('---') || l.startsWith('diff ') || l.startsWith('index ') ? 'hdr'
+      : l.startsWith('@@') ? 'hunk' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '';
+    return `<div class="${cls}">${esc(l) || ' '}</div>`;
+  });
+  if (p.truncated) lines.push(`<div class="more">… ${p.total - lines.length} more lines in the full replay</div>`);
+  return `<pre class="patch">${lines.join('')}</pre>`;
+}
+function filesHtml(stat) {
+  if (!stat || !stat.length) return `<div class="sub">No files changed.</div>`;
+  return `<div class="files">${stat.map((f) => `<div class="file"><span class="n" title="${esc(f.file)}">${esc(f.file)}</span><span>${f.untracked ? '<span class="a">new</span>' : `<span class="a">+${f.add}</span> <span class="d">−${f.del}</span>`}</span></div>`).join('')}</div>`;
+}
+
+const render = {
+  cover: (s) => `
+    <div class="eyebrow"><span class="lbl">Session record</span>${s.branch ? `<span class="chip mono">${esc(s.branch)}</span>` : ''}${s.repo ? `<span class="chip mono">${esc(s.repo)}</span>` : ''}</div>
+    <h2 class="title">${esc(s.title)}</h2>
+    <p class="orient">${esc(s.orient)}</p>
+    <div class="sub">${esc(R.name)} · ${esc(R.model)} · ${esc(R.date)}${R.audience === 'supervisor' ? '' : ` · supervised by ${esc(R.supervisor)}`}</div>
+    <div class="stats">${s.stats.map(([k, v, tone]) => `<div class="stat"><span class="lbl">${esc(k)}</span><span class="stat-v" ${tone ? `data-tone="${tone}"` : ''}>${esc(v)}</span></div>`).join('')}</div>`,
+
+  intent: (s) => `
+    <div class="eyebrow"><span class="lbl">${s.ordinal ? `Instruction ${s.ordinal} of ${s.of}` : 'The task, verbatim'}</span>${T('info', 'frozen spec')}</div>
+    <div class="quote">${esc(s.text)}</div>
+    <div class="sub" style="margin-top:auto">Everything that follows is measured against this text, not against what the agent later said it did.</div>`,
+
+  quiet: (s) => `
+    <div class="eyebrow"><span class="lbl">Ran without asking</span>${T('auto', 'log tier')}</div>
+    <div class="rows">${s.items.map((i) => `<div class="row"><span class="t">${esc(i.tool)}</span><span class="s" title="${esc(i.sub)}">${esc(i.sub)}</span>${T('auto', 'receipt')}</div>`).join('')}</div>
+    <div class="sub" style="margin-top:auto">Read-only tools run on the log tier. Nobody was asked, but every call is on the record.</div>`,
+
+  decision: (s) => {
+    const d = s.tier === 'never' ? 'never' : s.decision;
+    const big = d === 'never' ? 'Blocked by policy' : d === 'allow' ? (s.scope === 'always' ? 'Allowed, now a rule' : 'Allowed once') : (s.scope === 'always' ? 'Denied, now a never rule' : 'Denied');
+    return `
+    <div class="eyebrow"><span class="lbl">The agent asked</span>${T(s.tier === 'never' ? 'never' : 'ask', s.tier === 'never' ? 'never' : 'held')}</div>
+    <div class="card">
+      <div class="card-h"><span class="tool">${esc(s.tool)}</span><span class="key">rule key ${esc(s.key)}</span></div>
+      <pre>${esc(s.input)}</pre>
+      <div class="blast">${esc(s.blast)}</div>
+      <div class="stamp" data-d="${d}">
+        <span class="big">${esc(big)}</span>
+        ${s.waitedS ? `<span class="wait">after ${esc(s.waitedS)}s</span>` : `<span class="wait">never reached you</span>`}
+        ${s.resultPreview ? `<span class="res" data-err="${s.resultError}" title="${esc(s.resultPreview)}">${esc(s.resultPreview)}</span>` : ''}
+      </div>
+    </div>`;
+  },
+
+  diff: (s) => `
+    <div class="eyebrow"><span class="lbl">${s.sha ? `Turn ${s.turn} committed` : `Turn ${s.turn}, uncommitted changes`}</span>${s.sha ? `<span class="chip mono">${esc(s.sha)}</span>` : T('info', 'your branch')}</div>
+    <div class="sub">${esc(s.msg)}</div>
+    <div class="diffwrap">${filesHtml(s.stat)}${patchHtml(s.patch)}</div>`,
+
+  undo: (s) => `
+    <div class="eyebrow"><span class="lbl">Undone</span><span class="chip mono">${esc(s.from)} → ${esc(s.to)}</span>${T('info', 'git reset --hard')}</div>
+    <div class="sub">This change was on disk, then wasn’t. The recording keeps it so the story stays honest.</div>
+    <div class="diffwrap reverted">${filesHtml(s.stat)}${patchHtml(s.patch)}</div>`,
+
+  outcome: (s) => `
+    <div class="eyebrow"><span class="lbl">Intent vs outcome</span></div>
+    <div class="cols">
+      <div class="col"><span class="lbl">${esc(askedFor)}</span><div class="body">${esc(s.task)}</div></div>
+      <div class="col"><span class="lbl">Agent reported</span><div class="body">${esc(s.report || '(no final message)')}</div></div>
+    </div>
+    ${s.notDone.length ? `<div class="notdone">${s.notDone.map((n) => `<div class="row">${T(n.by === 'policy' ? 'never' : 'deny', n.by === 'policy' ? 'blocked by policy' : saidNo)}<span class="s" title="${esc(n.what)}">${esc(n.tool)} · ${esc(n.what)}</span></div>`).join('')}</div>` : ''}
+    <div class="sub">${s.head ? `Worktree now at <span class="mono">${esc(s.head)}</span>` : ''}${s.turns ? ` · ${s.turns} turns` : ''}${s.cost != null ? ` · est. $${Number(s.cost).toFixed(2)} of subscription` : ''}</div>`,
+
+  credits: () => `
+    <div class="scene-inner credits" style="display:flex;flex-direction:column;flex:1">
+      <div class="big-avatar">${esc(R.avatar)}</div>
+      <h2 class="title" style="max-width:none">Every number here was computed.</h2>
+      <div class="sub">Facts from the session recording. ${R.polished ? 'Sentences rewritten by a model; facts were not.' : 'No model wrote any of it.'}${R.voice ? ` Voice: macOS ${esc(R.voice)}.` : ''}</div>
+      <div class="links"><a href="../replay.html">Full replay</a><a href="https://github.com/" target="_blank" rel="noopener">Control Room</a></div>
+    </div>`,
+};
+
+// ---------------------------------------------------------------------------
+// player
+// ---------------------------------------------------------------------------
+let cur = -1, playing = false, muted = false, raf = null, sceneStart = 0, elapsed = 0, timer = null;
+const audio = new Audio();
+audio.preload = 'auto';
+
+function tone(s) { return s.kind === 'decision' ? (s.decision === 'deny' || s.tier === 'never' ? 'deny' : 'allow') : s.kind === 'undo' ? 'undo' : ''; }
+
+function show(i, { autoplay = playing } = {}) {
+  cur = Math.max(0, Math.min(SC.length - 1, i));
+  const s = SC[cur];
+  if (i !== 0 || autoplay) $('overlay').hidden = true;
+  $('sceneHost').innerHTML = `<div class="scene">${render[s.kind] ? render[s.kind](s) : ''}</div>`;
+  $('idx').textContent = `${cur + 1} / ${SC.length} · ${s.kind}`;
+  $('caption').innerHTML = esc(s.narration);
+  document.querySelectorAll('.seg').forEach((el, k) => { el.firstChild.style.width = k < cur ? '100%' : '0'; });
+  elapsed = 0;
+  stopClocks();
+  if (s.audio) {
+    audio.src = s.audio;
+    audio.muted = muted;
+    if (autoplay) audio.play().catch(() => {});
+  } else {
+    audio.removeAttribute('src');
+  }
+  if (autoplay) startClocks();
+}
+
+function startClocks() {
+  const s = SC[cur];
+  sceneStart = performance.now() - elapsed * 1000;
+  const loop = () => {
+    if (!playing) return;
+    elapsed = s.audio && !audio.paused && audio.duration ? audio.currentTime : (performance.now() - sceneStart) / 1000;
+    const frac = Math.min(1, elapsed / s.durS);
+    document.querySelectorAll('.seg')[cur].firstChild.style.width = (frac * 100) + '%';
+    $('clock').textContent = `${mmss(startAt[cur] + elapsed)} / ${mmss(TOTAL)}`;
+    $('avatar').dataset.speaking = String(s.audio && !audio.paused);
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+  if (!s.audio) timer = setTimeout(advance, s.durS * 1000);
+}
+function stopClocks() { if (raf) cancelAnimationFrame(raf); if (timer) clearTimeout(timer); raf = timer = null; $('avatar').dataset.speaking = 'false'; }
+
+function advance() {
+  if (cur >= SC.length - 1) { pause(); return; }
+  show(cur + 1, { autoplay: true });
+}
+audio.addEventListener('ended', () => { if (playing) timer = setTimeout(advance, 800); });
+
+function play() {
+  playing = true;
+  $('play').textContent = 'Pause';
+  $('overlay').hidden = true;
+  if (cur === -1 || cur === SC.length - 1 && elapsed >= SC[cur].durS) show(0, { autoplay: true });
+  else { if (SC[cur].audio) audio.play().catch(() => {}); startClocks(); }
+}
+function pause() {
+  playing = false;
+  $('play').textContent = 'Play';
+  audio.pause();
+  stopClocks();
+}
+
+// ---------------------------------------------------------------------------
+// chrome
+// ---------------------------------------------------------------------------
+$('hName').textContent = R.name;
+$('hModel').textContent = R.model;
+$('hSup').textContent = (R.runs > 1 ? `${R.runs} sessions · ` : '') + (R.audience === 'supervisor' ? 'your session' : `supervised by ${R.supervisor}`);
+$('hDate').textContent = `${R.date} · ${R.durationS.toFixed(0)}s of agent work · ${mmss(TOTAL)} to watch`;
+$('avatar').textContent = R.avatar;
+$('hint').textContent = `${SC.length} scenes · ${mmss(TOTAL)}${hasAudio ? ' · narrated' : ''}`;
+$('start').textContent = '▶ Play the record';
+$('clock').textContent = `0:00 / ${mmss(TOTAL)}`;
+$('foot').textContent = `Generated ${new Date(R.generatedAt).toLocaleString('en-GB')} from recordings/${R.id}.jsonl. ${R.polished ? 'Narration rewritten by a model from computed facts.' : 'Narration computed, not generated.'}`;
+$('prog').innerHTML = SC.map((s, i) => `<div class="seg" data-tone="${tone(s)}" role="listitem" title="${i + 1}. ${esc(s.kind)}"><i></i></div>`).join('');
+$('prog').onclick = (e) => { const seg = e.target.closest('.seg'); if (!seg) return; show([...seg.parentNode.children].indexOf(seg), { autoplay: playing }); };
+
+$('start').onclick = play;
+$('play').onclick = () => (playing ? pause() : play());
+$('prev').onclick = () => show(Math.max(0, cur - 1), { autoplay: playing });
+$('next').onclick = () => show(Math.min(SC.length - 1, cur + 1), { autoplay: playing });
+$('mute').onclick = () => { muted = !muted; audio.muted = muted; $('mute').textContent = muted ? 'Sound off' : 'Sound on'; $('mute').setAttribute('aria-pressed', String(muted)); };
+if (!hasAudio) { $('mute').textContent = 'No audio'; $('mute').disabled = true; }
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+  if (e.key === 'ArrowRight') $('next').click();
+  if (e.key === 'ArrowLeft') $('prev').click();
+  if (e.key === 'm') $('mute').click();
+});
+
+show(0, { autoplay: false });
+</script>
+</body>
+</html>
