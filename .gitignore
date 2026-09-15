@@ -6,5 +6,5 @@ node_modules/
 workspace/
 
 # machine-local config, and build artifacts that embed local paths
-.control-room.json
+.nearly.json
 ui/replay.html

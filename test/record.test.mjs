@@ -45,7 +45,7 @@ function build(extra = []) {
     '--branch', t.branch, '--repo', t.repo, '--no-audio', ...extra,
   ], {
     cwd: root, encoding: 'utf8', timeout: 120_000,
-    env: { ...process.env, CONTROL_ROOM_RECORDINGS: fixtures, CONTROL_ROOM_OUT: out, CONTROL_ROOM_STORY: story },
+    env: { ...process.env, NEARLY_RECORDINGS: fixtures, NEARLY_OUT: out, NEARLY_STORY: story },
   });
   assert.equal(r.status, 0, `build failed: ${r.stderr}`);
   const f = readdirSync(story).find((x) => x.endsWith('.json'));
@@ -137,7 +137,7 @@ test('it refuses to invent a record for a branch with no sessions', () => {
     join(root, 'scripts', 'build-recap.mjs'), '--branch', 'no-such-branch', '--repo', root, '--no-audio',
   ], {
     cwd: root, encoding: 'utf8', timeout: 60_000,
-    env: { ...process.env, CONTROL_ROOM_RECORDINGS: fixtures, CONTROL_ROOM_OUT: out, CONTROL_ROOM_STORY: story },
+    env: { ...process.env, NEARLY_RECORDINGS: fixtures, NEARLY_OUT: out, NEARLY_STORY: story },
   });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /no recordings on branch/);

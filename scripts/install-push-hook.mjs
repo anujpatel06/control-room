@@ -40,8 +40,8 @@ if (remove) {
 
 if (existsSync(hookPath)) {
   const existing = readFileSync(hookPath, 'utf8');
-  if (!existing.includes('control-room')) {
-    console.error(`${hookPath} already exists and was not written by the Control Room.`);
+  if (!existing.includes('nearly')) {
+    console.error(`${hookPath} already exists and was not written by the Nearly.`);
     console.error('Refusing to overwrite it. Move it aside, or add this line to it yourself:');
     console.error(`  node ${join(root, 'scripts', 'push-record.mjs')} "${repo}" || true`);
     process.exit(1);
@@ -50,7 +50,7 @@ if (existsSync(hookPath)) {
 
 mkdirSync(hooksDir, { recursive: true });
 writeFileSync(hookPath, `#!/bin/sh
-# control-room: hand the session record over at push time.
+# nearly: hand the session record over at push time.
 # Never blocks the push; "exit 0" at the end is the whole safety story.
 #
 # git gives a hook no terminal of its own, so borrow the user's when there is
@@ -66,7 +66,7 @@ CR="${join(root, 'scripts', 'push-record.mjs')}"
 if (: >/dev/tty) 2>/dev/null; then
   node "$CR" "${repo}" </dev/tty >/dev/tty 2>&1 || true
 else
-  CONTROL_ROOM_NO_TTY=1 node "$CR" "${repo}" || true
+  NEARLY_NO_TTY=1 node "$CR" "${repo}" || true
 fi
 exit 0
 `);
@@ -75,6 +75,6 @@ chmodSync(hookPath, 0o755);
 console.log(`Installed ${hookPath}`);
 console.log('');
 console.log('Next push on this repo will build the branch record and ask before posting.');
-console.log('Set RECAP_URL_BASE so the comment can link to the hosted page, e.g.');
-console.log('  export RECAP_URL_BASE=https://<user>.github.io/<repo>/recaps');
+console.log('Set NEARLY_URL_BASE so the comment can link to the hosted page, e.g.');
+console.log('  export NEARLY_URL_BASE=https://<user>.github.io/<repo>/recaps');
 console.log('Remove it again with: node scripts/install-push-hook.mjs "' + repo + '" --remove');

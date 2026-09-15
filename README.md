@@ -1,10 +1,10 @@
-# Control Room
+# Nearly
 
 **A pull request tells you what changed. This tells you what nearly happened.**
 
 When a coding agent writes a branch, the person reviewing it has no idea what the agent tried, what a human refused, or what got rolled back. The diff is the only thing that survives, and the diff is the one artifact that cannot show you any of it.
 
-Control Room holds an agent's risky actions until a human decides, records every one of those decisions, and turns the branch into a short narrated page written for **the reviewer**. That page is a link, and it goes on the pull request.
+Nearly holds an agent's risky actions until a human decides, records every one of those decisions, and turns the branch into a short narrated page written for **the reviewer**. That page is a link, and it goes on the pull request.
 
 ```
 you work normally  →  agent acts  →  risky action held  →  you decide
@@ -16,7 +16,7 @@ you work normally  →  agent acts  →  risky action held  →  you decide
 
 Nothing to run. This is a real record from two real agent sessions on one branch:
 
-**[A branch where three things never happened →](https://anujpatel06.github.io/control-room/recaps/priya-app--feat-third-task.html)**
+**[A branch where three things never happened →](https://anujpatel06.github.io/nearly/records/priya-app--feat-third-task.html)**
 
 Watch the first thirty seconds. The cover says what the diff cannot: an action the supervisor refused, a push policy blocked, and a file deletion refused. [Here is how it looks on the pull request.](https://github.com/anujpatel06/tempo-demo/pull/2)
 
@@ -32,30 +32,30 @@ One command, in the repo you want recorded.
 
 ```bash
 cd ~/code/my-app
-control-room
+nearly
 ```
 
 ```
-✓ Control Room is on for my-app
+✓ Nearly is on for my-app
 
   · every Claude Code session here is gated and recorded
   · the record is offered when you push
-  · records publish to https://you.github.io/control-room/recaps
+  · records publish to https://you.github.io/nearly/records
 
   Now just work. Requests that need you appear at http://127.0.0.1:47653
   Nothing to leave running. Turn it off again with --off.
 ```
 
-It installs the Claude Code hooks and the git pre-push hook, and works out where records publish by reading the Control Room's own remote. Nothing to configure. `control-room off` removes all of it.
+It installs the Claude Code hooks and the git pre-push hook, and works out where records publish by reading the Nearly's own remote. Nothing to configure. `nearly off` removes all of it.
 
 **To get that command,** until this is on npm:
 
 ```bash
-git clone https://github.com/anujpatel06/control-room ~/control-room
-npm link --prefix ~/control-room
+git clone https://github.com/anujpatel06/nearly ~/nearly
+npm link --prefix ~/nearly
 ```
 
-No dependencies, so the link is instant. Once published it becomes `npx control-room` with nothing to clone at all.
+No dependencies, so the link is instant. Once published it becomes `npx nearly-cli` with nothing to clone at all.
 
 **There is no server to start.** The hooks start it the first time they need it, in about a second, and it stays up. If it cannot start, Claude Code falls back to its own permission prompts and your session continues. Nothing to remember and nothing to break.
 
@@ -71,7 +71,7 @@ Nothing about how you work changes. Open the repo in VS Code or a terminal, star
 
 ### For a team
 
-`.claude/settings.local.json` is per-person and stays out of git, which is right while you are trying it. To turn it on for everyone, move the same hooks into `.claude/settings.json` and commit that file. Once this is on npm the hooks invoke `npx control-room`, so a teammate who clones the repo needs nothing installed beyond Node.
+`.claude/settings.local.json` is per-person and stays out of git, which is right while you are trying it. To turn it on for everyone, move the same hooks into `.claude/settings.json` and commit that file. Once this is on npm the hooks invoke `npx nearly-cli`, so a teammate who clones the repo needs nothing installed beyond Node.
 
 ## Why the gate is not the point
 
@@ -114,7 +114,7 @@ node scripts/build-recap.mjs latest                                 # one sessio
 node scripts/build-recap.mjs latest --llm                           # Claude rewrites the sentences, never the facts
 ```
 
-Output is one self-contained HTML file in `ui/recaps/`, served at `/recaps/…` while the server runs.
+Output is one self-contained HTML file in `ui/records/`, served at `/records/…` while the server runs.
 
 ### The voice
 
@@ -134,7 +134,7 @@ node scripts/build-recap.mjs latest --voice "Ava (Premium)"
 **Better still, read it yourself.** Synthesis is a stand-in for a person reading their own words, and for the one record you put in front of people it is worth ten minutes:
 
 ```bash
-node scripts/build-recap.mjs latest --script          # writes recaps/<slug>-script.md
+node scripts/build-recap.mjs latest --script          # writes records/<slug>-script.md
 # record each numbered line into a folder as 01.m4a, 02.m4a, …
 node scripts/build-recap.mjs latest --voice-dir ~/Desktop/narration
 ```
@@ -145,7 +145,7 @@ Rules the builder follows:
 
 - Every number, diff and decision is computed from `recordings/<session>.jsonl` and the worktree's git history. With `--llm`, Claude only rewrites the narration sentences; it cannot add or change a fact, and the page says which mode produced it.
 - Narration is macOS `say` converted to AAC and embedded, so the file needs no server and no API key. About 6 KB per second of speech.
-- The storyboard is also written to `recaps/<agent>-<id>.json` for inspection.
+- The storyboard is also written to `records/<agent>-<id>.json` for inspection.
 
 ## The branch is the unit, not the session
 
@@ -172,12 +172,12 @@ Three rules it follows:
 - **It never posts without you.** A record of what you refused is more revealing
   than a diff. Publishing that to a shared pull request is your call, every time.
 - **It stays fast.** Narration is skipped by default, because a minute of `say`
-  at every push is not acceptable. Set `RECAP_AUDIO=1` when you want the good one.
+  at every push is not acceptable. Set `NEARLY_AUDIO=1` when you want the good one.
 
-Set `RECAP_URL_BASE` to the hosted path so the comment can link to the page:
+Set `NEARLY_URL_BASE` to the hosted path so the comment can link to the page:
 
 ```bash
-export RECAP_URL_BASE=https://<user>.github.io/<repo>/recaps
+export NEARLY_URL_BASE=https://<user>.github.io/<repo>/records
 ```
 
 Today the poster speaks GitHub, through the `gh` CLI. Bitbucket and GitLab each
@@ -192,7 +192,7 @@ Recap pages are self-contained HTML, so GitHub Pages hosts them for free and the
 node scripts/publish-pages.mjs --base https://<user>.github.io/<repo>
 ```
 
-That copies every built recap into `docs/recaps/` and writes `docs/index.html`, an index of the sessions on record. Commit `docs/`, then set **Settings → Pages → branch `main`, folder `/docs`**. Preview it locally first at http://127.0.0.1:47653/docs/ while the server is running.
+That copies every built recap into `docs/records/` and writes `docs/index.html`, an index of the sessions on record. Commit `docs/`, then set **Settings → Pages → branch `main`, folder `/docs`**. Preview it locally first at http://127.0.0.1:47653/docs/ while the server is running.
 
 ## Why the hook fails open
 
@@ -247,5 +247,5 @@ The claim this project makes is testable: a reviewer who sees the session record
 - `scripts/publish-pages.mjs`, build the `docs/` folder GitHub Pages serves
 - `scripts/install-push-hook.mjs` + `scripts/push-record.mjs`, hand the branch record over at `git push`
 - `workspace/`, the repo agents work on (seeded with the Tempo demo)
-- `recordings/<session>.jsonl`, every event and decision; `recordings/demo/` is committed so the recaps can be rebuilt from source
+- `recordings/<session>.jsonl`, every event and decision; `recordings/demo/` is committed so the records can be rebuilt from source
 - `STUDY.md`, the protocol for testing whether any of this helps a reviewer

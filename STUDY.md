@@ -19,7 +19,7 @@ Within-subject, two tasks per participant, order counterbalanced.
 
 Each participant does one task in each condition. Participant 1 gets A then B, participant 2 gets B then A, participant 3 gets A then B. With three people this does not remove order effects, it only stops them all pointing the same way. Say so in the write-up.
 
-**Do not tell participants what the study is about.** Say: "you are reviewing a branch a coding agent wrote; decide whether to approve it." Nothing about refusals, nothing about the Control Room.
+**Do not tell participants what the study is about.** Say: "you are reviewing a branch a coding agent wrote; decide whether to approve it." Nothing about refusals, nothing about Nearly.
 
 ---
 
@@ -94,7 +94,7 @@ The essay sentence to aim for is a fact, not a claim: *given the same branch, N 
 ## Before the session
 
 - [ ] Both recordings captured with a real agent, not simulated
-- [ ] Both recaps built and reachable at a public link
+- [ ] Both records built and reachable at a public link
 - [ ] Both pull requests open, with the recap comment posted on the treatment one
 - [ ] Recap opens in under two seconds on a cold load
 - [ ] Practice run with someone who is not a participant, to fix the script

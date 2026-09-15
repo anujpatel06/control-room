@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One Claude Code hook event, forwarded to the Control Room.
+// One Claude Code hook event, forwarded to the Nearly.
 //
 //   node scripts/hook.mjs <event> <repo-name>
 //
@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HOST = '127.0.0.1';
-const PORT = Number(process.env.CONTROL_ROOM_PORT || 47653);
+const PORT = Number(process.env.NEARLY_PORT || 47653);
 const BASE = `http://${HOST}:${PORT}`;
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 

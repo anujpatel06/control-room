@@ -15,21 +15,21 @@ const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv[2] || '.');
 function configured() {
   try {
-    const f = join(root, '.control-room.json');
+    const f = join(root, '.nearly.json');
     if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8')).urlBase || '';
   } catch { /* fall through to the env var */ }
   return '';
 }
-const URL_BASE = (process.env.RECAP_URL_BASE || configured() || '').replace(/\/$/, '');
+const URL_BASE = (process.env.NEARLY_URL_BASE || configured() || '').replace(/\/$/, '');
 // Narration takes about a second a scene, which is too long to make someone
-// wait at a push. Opt in with RECAP_AUDIO=1 when you are making the good one.
-const WANT_AUDIO = process.env.RECAP_AUDIO === '1';
+// wait at a push. Opt in with NEARLY_AUDIO=1 when you are making the good one.
+const WANT_AUDIO = process.env.NEARLY_AUDIO === '1';
 
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 
-function bail(msg) { if (msg) console.error(dim(`control room: ${msg}`)); process.exit(0); }
+function bail(msg) { if (msg) console.error(dim(`nearly: ${msg}`)); process.exit(0); }
 
 let branch;
 try {
@@ -55,7 +55,7 @@ if (build.status !== 0) {
 
 const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 const slug = `${safe(basename(repo))}--${safe(branch)}`;
-const storyPath = join(root, 'recaps', `${slug}.json`);
+const storyPath = join(root, 'records', `${slug}.json`);
 if (!existsSync(storyPath)) bail('record built but not found on disk');
 
 const sb = JSON.parse(readFileSync(storyPath, 'utf8'));
@@ -76,7 +76,7 @@ if (notDone.length) {
   }
 }
 console.log('');
-console.log(dim(`  ${URL_BASE ? `${URL_BASE}/${slug}.html` : `ui/recaps/${slug}.html (set RECAP_URL_BASE to publish it)`}`));
+console.log(dim(`  ${URL_BASE ? `${URL_BASE}/${slug}.html` : `ui/records/${slug}.html (set NEARLY_URL_BASE to publish it)`}`));
 console.log('');
 
 // gh is only useful if there is a pull request to comment on
@@ -89,7 +89,7 @@ if (!pr || pr.status !== 0) {
 }
 const prUrl = (() => { try { return JSON.parse(pr.stdout).url; } catch { return null; } })();
 
-if (process.env.CONTROL_ROOM_NO_TTY === '1' || !process.stdin.isTTY) {
+if (process.env.NEARLY_NO_TTY === '1' || !process.stdin.isTTY) {
   console.log(dim('  No terminal to ask on, so nothing was posted.'));
   console.log(dim(`  Post it yourself: node scripts/post-recap.mjs ${slug}${URL_BASE ? ` --url-base ${URL_BASE}` : ''}`));
   console.log('');

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // The one command. Everything else is a subcommand of this.
 //
-//   control-room              turn it on for the repo you are in
-//   control-room off          turn it off again
-//   control-room open         open the dashboard
-//   control-room record       build the record for the current branch
-//   control-room post         put that record on the pull request
-//   control-room voices       list the narration voices you have
-//   control-room server       run the server in the foreground (it self-starts otherwise)
-//   control-room hook <ev>    internal: what the Claude Code hooks call
+//   nearly              turn it on for the repo you are in
+//   nearly off          turn it off again
+//   nearly open         open the dashboard
+//   nearly record       build the record for the current branch
+//   nearly post         put that record on the pull request
+//   nearly voices       list the narration voices you have
+//   nearly server       run the server in the foreground (it self-starts otherwise)
+//   nearly hook <ev>    internal: what the Claude Code hooks call
 //
 // Run it with no arguments inside a git repo and it does the useful thing,
 // because the useful thing is what people type first.
@@ -56,7 +56,7 @@ switch (cmd) {
     return run(s('build-recap.mjs'), ['--voices']);
 
   case 'server': {
-    console.log('Control Room on http://127.0.0.1:47653');
+    console.log('Nearly on http://127.0.0.1:47653');
     console.log('You do not normally need this: the hooks start it when they need it.');
     return run(join(root, 'server', 'index.mjs'), rest);
   }
@@ -71,20 +71,20 @@ switch (cmd) {
 
   case 'help': case '--help': case '-h': {
     console.log(`
-  control-room              turn it on for the repo you are in
-  control-room off          turn it off again
-  control-room open         open the dashboard
-  control-room record       build the record for the current branch
-  control-room post         put that record on the pull request
-  control-room voices       list the narration voices you have
-  control-room server       run the server in the foreground
+  nearly              turn it on for the repo you are in
+  nearly off          turn it off again
+  nearly open         open the dashboard
+  nearly record       build the record for the current branch
+  nearly post         put that record on the pull request
+  nearly voices       list the narration voices you have
+  nearly server       run the server in the foreground
 `);
     return process.exit(0);
   }
 
   default:
     console.error(`Unknown command: ${cmd}`);
-    console.error('Try: control-room help');
+    console.error('Try: nearly help');
     process.exit(1);
 }
 }

@@ -105,9 +105,9 @@ attached, handed over
 **Concepts:** consent, supervision, custody, provenance, accountability,
 verification, blast radius, fails closed, what nearly happened
 
-The current internal name uses a control-room metaphor: a place you watch from.
-That metaphor may be wrong, because the product is less about watching in the
-moment and more about **what you hand to the next person**.
+The internal name at the time of writing was Control Room: a place you watch
+from. That metaphor was wrong, because the product is less about watching in
+the moment and more about **what you hand to the next person**.
 
 ## 8. What the name has to do
 
@@ -133,9 +133,11 @@ Rank these by importance when judging candidates:
 - Must not collide with a well-known developer tool.
 - English, but it will be read by non-native speakers constantly.
 
-For reference, all of these were free on npm at the time of writing:
-`control-room`, `controlroom`, `agent-control-room`, `session-record`,
-`nearly-happened`.
+**Resolved:** the project is now called **Nearly**, from the sentence it is
+built around. Two things to know. `nearly` on npm is held by an abandoned 2017
+package, so the published package is `nearly-cli` while the command people type
+is `nearly`. And `nearley`, one letter away, is a well-known JavaScript parser
+toolkit, which is a permanent search-collision risk that was accepted knowingly.
 
 ## 10. Territories worth exploring
 

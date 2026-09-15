@@ -3,7 +3,7 @@
 //
 //   node scripts/publish-pages.mjs [--base https://<user>.github.io/<repo>]
 //
-// Copies every built recap into docs/recaps/ and writes docs/index.html, an
+// Copies every built recap into docs/records/ and writes docs/index.html, an
 // index of the sessions on record. Then, once:
 //
 //   Settings → Pages → Source: "Deploy from a branch", branch main, folder /docs
@@ -18,16 +18,16 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const storyDir = join(root, 'recaps');
-const builtDir = join(root, 'ui', 'recaps');
+const storyDir = join(root, 'records');
+const builtDir = join(root, 'ui', 'records');
 const docsDir = join(root, 'docs');
-const outRecaps = join(docsDir, 'recaps');
+const outRecaps = join(docsDir, 'records');
 
 const argv = process.argv.slice(2);
 const bIdx = argv.indexOf('--base');
-const BASE = (bIdx !== -1 ? argv[bIdx + 1] : process.env.RECAP_URL_BASE || '').replace(/\/$/, '');
+const BASE = (bIdx !== -1 ? argv[bIdx + 1] : process.env.NEARLY_URL_BASE || '').replace(/\/$/, '');
 
-if (!existsSync(storyDir)) { console.error('no recaps/ yet — run build-recap first'); process.exit(1); }
+if (!existsSync(storyDir)) { console.error('no records/ yet — run build-recap first'); process.exit(1); }
 
 mkdirSync(outRecaps, { recursive: true });
 
@@ -79,7 +79,7 @@ const page = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Session records · Control Room</title>
+<title>Session records · Nearly</title>
 <meta name="description" content="What agents did in this repository, including what a human refused.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -114,12 +114,12 @@ const page = `<!doctype html>
 <body>
 <div class="shell">
   <div>
-    <span class="lbl">Control Room</span>
+    <span class="lbl">Nearly</span>
     <h1>Session records</h1>
   </div>
   <p class="lede">Each entry is the record of one coding-agent session: the task it was given, every action a human held or refused, the changes it made, and anything that was rolled back. <b>A diff tells you what changed. These tell you what nearly happened.</b></p>
   <div class="list">${rows || '<div class="empty">No sessions recorded yet.</div>'}</div>
-  <p class="foot">Generated ${new Date().toLocaleString('en-GB')} by the Control Room. Every figure on these pages is computed from the session recordings, not written by a model.</p>
+  <p class="foot">Generated ${new Date().toLocaleString('en-GB')} by the Nearly. Every figure on these pages is computed from the session recordings, not written by a model.</p>
 </div>
 </body>
 </html>

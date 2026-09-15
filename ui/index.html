@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Control Room</title>
+<title>Nearly</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -230,7 +230,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="mark"><i></i></span><h1>Control Room</h1></div>
+  <div class="brand"><span class="mark"><i></i></span><h1>Nearly</h1></div>
   <span class="conn" id="conn"><i></i><span id="connText">connecting</span></span>
   <div class="quota" id="quota"></div>
 </header>
@@ -329,7 +329,7 @@
 
     $('askCount').textContent = asks.length;
     $('askCount').dataset.hot = asks.length ? '1' : '0';
-    document.title = asks.length ? `(${asks.length}) Control Room` : 'Control Room';
+    document.title = asks.length ? `(${asks.length}) Nearly` : 'Nearly';
 
     if (!asks.length) {
       el.innerHTML = `<div class="empty"><b>Nothing is waiting.</b>

@@ -1,4 +1,4 @@
-// Agent Control Room — spike server.
+// Agent Nearly — spike server.
 // Zero dependencies. Spawns `claude -p` sessions (your Claude subscription, no API key),
 // gates every tool call through an HTTP PreToolUse hook, and streams everything to the UI.
 //
@@ -13,14 +13,14 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_TIER, ruleKey, classify as classifyWith } from './policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = Number(process.env.CONTROL_ROOM_PORT || 47653);
+const PORT = Number(process.env.NEARLY_PORT || 47653);
 const HOST = '127.0.0.1';
 const WORKSPACE = path.join(ROOT, 'workspace');
 const WORKTREES = path.join(WORKSPACE, '.worktrees');
 const RECORDINGS = path.join(ROOT, 'recordings');
 const UI = path.join(ROOT, 'ui', 'index.html');
 const MAX_SESSIONS = 3;                 // 8 GB machine
-const ASK_TIMEOUT_MS = Number(process.env.CONTROL_ROOM_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
+const ASK_TIMEOUT_MS = Number(process.env.NEARLY_ASK_TIMEOUT_MS || 120_000);         // UI must answer before this; then we fail CLOSED (deny)
 const HOOK_TIMEOUT_S = 180;             // Claude Code's own hook timeout; must be > ASK_TIMEOUT
 const MODEL = 'sonnet';
 const MAX_TURNS = '12';
@@ -94,7 +94,7 @@ function createSession({ name, prompt }) {
   const worktree = path.join(WORKTREES, `${safe}-${id.slice(0, 4)}`);
   git(WORKSPACE, ['worktree', 'add', '-B', branch, worktree, 'main']);
 
-  const settingsPath = path.join(worktree, '.control-room-hooks.json');
+  const settingsPath = path.join(worktree, '.nearly-hooks.json');
   fs.writeFileSync(settingsPath, JSON.stringify(hooksSettings(id)));
 
   const args = [
@@ -361,14 +361,14 @@ const server = http.createServer(async (req, res) => {
       const { tier, reason } = classifyWith(hook, rules);
       const id = hook.tool_use_id || randomUUID();
       const respond = (decision, why) => hookOk(res, {
-        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `control room: ${why}` },
+        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `nearly: ${why}` },
       });
       if (!s) return respond('deny', 'unknown session');
       if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: hook.tool_name, input: hook.tool_input, tier }); return respond('deny', `never (${reason})`); }
       if (tier === 'log') { record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: 'policy', tool: hook.tool_name, input: hook.tool_input, tier }); return respond('allow', `do and log (${reason})`); }
       // ask: hold the response until the UI decides, or fail closed
       const item = { id, sid, tool: hook.tool_name, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), respond };
-      item.timer = setTimeout(() => decide(sid, id, 'deny', 'no human answer; control room fails closed'), ASK_TIMEOUT_MS);
+      item.timer = setTimeout(() => decide(sid, id, 'deny', 'no human answer; nearly fails closed'), ASK_TIMEOUT_MS);
       s.pending.set(id, item);
       s.state = 'waiting';
       record(sid, { type: 'ask', ...pendingView(item) });
@@ -399,7 +399,7 @@ const server = http.createServer(async (req, res) => {
         try {
           git(s.worktree, ['add', '-A']);
           const msg = `turn ${s.turns + 1}: ${(hook.last_assistant_message || '').replace(/\s+/g, ' ').slice(0, 60)}`;
-          git(s.worktree, ['-c', 'user.name=Control Room', '-c', 'user.email=control-room@local', 'commit', '-qm', msg, '--allow-empty']);
+          git(s.worktree, ['-c', 'user.name=Nearly', '-c', 'user.email=nearly-cli@local', 'commit', '-qm', msg, '--allow-empty']);
           const sha = git(s.worktree, ['rev-parse', '--short', 'HEAD']);
           record(sid, { type: 'checkpoint', sha, msg });
         } catch (e) { record(sid, { type: 'checkpoint_error', error: String(e.message).slice(0, 300) }); }
@@ -419,7 +419,7 @@ const server = http.createServer(async (req, res) => {
   }
   // Static: built recaps and the replay out of ui/, plus a local preview of the
   // docs/ folder that GitHub Pages will serve, so you can check it before pushing.
-  if (req.method === 'GET' && (url.pathname.startsWith('/recaps/') || url.pathname === '/replay.html' || url.pathname === '/docs' || url.pathname.startsWith('/docs/'))) {
+  if (req.method === 'GET' && (url.pathname.startsWith('/records/') || url.pathname === '/replay.html' || url.pathname === '/docs' || url.pathname.startsWith('/docs/'))) {
     const docs = url.pathname === '/docs' || url.pathname.startsWith('/docs/');
     const base = path.join(ROOT, docs ? 'docs' : 'ui');
     let rel = url.pathname.slice(1).split('/').filter((p) => p && p !== '..').join('/');
@@ -520,12 +520,12 @@ const server = http.createServer(async (req, res) => {
 // The loser is not an error: the winner is already serving.
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') process.exit(0);
-  console.error(`control room: ${e.message}`);
+  console.error(`nearly: ${e.message}`);
   process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`control room  http://${HOST}:${PORT}`);
+  console.log(`nearly  http://${HOST}:${PORT}`);
   console.log(`workspace     ${WORKSPACE}`);
   console.log(`recordings    ${RECORDINGS}`);
 });

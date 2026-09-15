@@ -1,10 +1,10 @@
 {
-  "name": "control-room",
+  "name": "nearly-cli",
   "version": "0.1.0",
-  "description": "A pull request tells you what changed. This tells you what nearly happened: the commands a human refused, the pushes policy blocked, the turns rolled back.",
+  "description": "A pull request tells you what changed. Nearly tells you what nearly happened: the commands a human refused, the pushes policy blocked, the turns rolled back.",
   "type": "module",
   "bin": {
-    "control-room": "bin/control-room.mjs"
+    "nearly": "bin/nearly.mjs"
   },
   "files": [
     "bin",
@@ -31,9 +31,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anujpatel06/control-room.git"
+    "url": "https://github.com/anujpatel06/nearly.git"
   },
-  "homepage": "https://anujpatel06.github.io/control-room/",
+  "homepage": "https://anujpatel06.github.io/nearly/",
   "scripts": {
     "test": "node --test --test-concurrency=1 test/"
   }

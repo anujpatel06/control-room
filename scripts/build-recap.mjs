@@ -1,4 +1,4 @@
-// Build a narrated, shareable recap of one Control Room session.
+// Build a narrated, shareable recap of one Nearly session.
 //
 //   node scripts/build-recap.mjs <session-id | latest> [--llm] [--no-audio] [--voice Samantha] [--avatar AP]
 //
@@ -6,7 +6,7 @@
 // (including commits that were undone, via the reflog), computes a storyboard,
 // optionally asks Claude to rewrite the narration (facts stay computed), records
 // narration with macOS `say`, and writes one self-contained HTML file to
-// ui/recaps/<name>-<id4>.html. That file is the link you share.
+// ui/records/<name>-<id4>.html. That file is the link you share.
 //
 // Principle: every number, diff and decision on screen is computed from the
 // recording. The language model, when used, only rewrites the sentences.
@@ -18,9 +18,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const recordingsDir = process.env.CONTROL_ROOM_RECORDINGS || join(root, 'recordings');
+const recordingsDir = process.env.NEARLY_RECORDINGS || join(root, 'recordings');
 const templatePath = join(root, 'ui', 'recap.template.html');
-const outDir = process.env.CONTROL_ROOM_OUT || join(root, 'ui', 'recaps');
+const outDir = process.env.NEARLY_OUT || join(root, 'ui', 'records');
 
 // ---------------------------------------------------------------------------
 // args
@@ -34,19 +34,19 @@ const flag = (name, dflt) => {
 };
 const wantLLM = flag('--llm', false);
 const noAudio = flag('--no-audio', false);
-const VOICE_ARG = flag('--voice', process.env.RECAP_VOICE || null);
-const RATE = Number(flag('--rate', process.env.RECAP_RATE || 176));
+const VOICE_ARG = flag('--voice', process.env.NEARLY_VOICE || null);
+const RATE = Number(flag('--rate', process.env.NEARLY_RATE || 176));
 const LIST_VOICES = flag('--voices', false);
 // Read it yourself. Synthesis is a stand-in; a person reading their own words is
 // the thing it stands in for, and it costs nothing but ten minutes.
-const VOICE_DIR = flag('--voice-dir', process.env.RECAP_VOICE_DIR || null);
+const VOICE_DIR = flag('--voice-dir', process.env.NEARLY_VOICE_DIR || null);
 const WRITE_SCRIPT = flag('--script', false);
-const AVATAR = flag('--avatar', process.env.RECAP_AVATAR || 'AP');
-const AUTHOR = flag('--author', process.env.RECAP_AUTHOR || 'Anuj');
+const AVATAR = flag('--avatar', process.env.NEARLY_AVATAR || 'AP');
+const AUTHOR = flag('--author', process.env.NEARLY_AUTHOR || 'Anuj');
 // Who is this recap for? A reviewer opening someone else's pull request was not
 // in the room, so "you" is the wrong pronoun for them: the supervisor is named
 // instead. Pass --audience supervisor for the second-person version.
-const AUDIENCE = flag('--audience', process.env.RECAP_AUDIENCE || 'reviewer');
+const AUDIENCE = flag('--audience', process.env.NEARLY_AUDIENCE || 'reviewer');
 const forReviewer = AUDIENCE !== 'supervisor';
 const SUP = forReviewer ? AUTHOR : 'You';
 const sup = forReviewer ? AUTHOR : 'you';
@@ -571,7 +571,7 @@ function writeScript(sb, slug) {
     lines.push(s.narration);
     lines.push('');
   });
-  const p = join(root, 'recaps', `${slug}-script.md`);
+  const p = join(root, 'records', `${slug}-script.md`);
   writeFileSync(p, lines.join('\n'));
   return p;
 }
@@ -610,7 +610,7 @@ if (!noAudio) {
 sb.totalS = sb.scenes.reduce((n, s) => n + s.durS, 0);
 
 mkdirSync(outDir, { recursive: true });
-const storyDirOut = process.env.CONTROL_ROOM_STORY || join(root, 'recaps');
+const storyDirOut = process.env.NEARLY_STORY || join(root, 'records');
 mkdirSync(storyDirOut, { recursive: true });
 const safe = (x) => String(x).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 const slug = BRANCH ? `${safe(sb.name)}--${safe(BRANCH)}` : `${sb.name}-${sb.id.slice(0, 4)}`;
@@ -620,11 +620,11 @@ writeFileSync(jsonPath, JSON.stringify({ ...sb, scenes: sb.scenes.map(({ audio, 
 const html = readFileSync(templatePath, 'utf8')
   .replace('__RECAP__', JSON.stringify(sb).replace(/<\/script>/gi, '<\\/script>'))
   .replaceAll('__TITLE__', `${sb.name} · ${sb.scenes[0].title}`)
-  .replaceAll('__DESC__', `Recap of a Control Room session: ${sb.scenes[0].narration}`);
+  .replaceAll('__DESC__', `Recap of a Nearly session: ${sb.scenes[0].narration}`);
 const outPath = join(outDir, `${slug}.html`);
 writeFileSync(outPath, html);
 
 if (WRITE_SCRIPT) console.log(`Script sheet: ${writeScript(sb, slug).replace(root + '/', '')}`);
 
-console.log(`Built ui/recaps/${slug}.html — ${BRANCH ? `branch "${BRANCH}", ${sb.runs} session(s), ` : ''}${sb.scenes.length} scenes, ${sb.totalS.toFixed(0)}s, ${Math.round(html.length / 1024)} KB`);
+console.log(`Built ui/records/${slug}.html — ${BRANCH ? `branch "${BRANCH}", ${sb.runs} session(s), ` : ''}${sb.scenes.length} scenes, ${sb.totalS.toFixed(0)}s, ${Math.round(html.length / 1024)} KB`);
 for (const s of sb.scenes) console.log(`  ${s.kind.padEnd(9)} ${s.durS.toFixed(1)}s  ${short(s.narration, 90)}`);

@@ -1,4 +1,4 @@
-// Turn on the Control Room for a repo you already work in.
+// Turn on the Nearly for a repo you already work in.
 //
 //   node scripts/attach.mjs                 # this repo
 //   node scripts/attach.mjs ~/code/my-app   # that one
@@ -10,7 +10,7 @@
 //     whether you start it in a terminal, in VS Code, or in JetBrains
 //   · a git pre-push hook, so the record is offered when the work leaves your
 //     machine
-//   · where the records are published, read from the Control Room's own remote
+//   · where the records are published, read from the Nearly's own remote
 //
 // There is no server to remember. The hooks start it the first time they need
 // it, and if it cannot start, Claude Code falls back to its own prompts and
@@ -30,7 +30,7 @@ const PORT = 47653;
 // Running from a clone, the path is stable and faster, so use it.
 const fromPackage = /[\\/]node_modules[\\/]/.test(root) || /[\\/]_npx[\\/]/.test(root);
 const hookCmd = (ev) => fromPackage
-  ? `npx -y control-room@${pkgVersion()} hook ${ev}`
+  ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
   : `node ${JSON.stringify(HOOK)} ${ev}`;
 function pkgVersion() {
   try { return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version; }
@@ -71,7 +71,7 @@ settings.hooks = settings.hooks || {};
 // Recognise our own entries by the script they run, so this is safe to re-run
 // and leaves anyone else's hooks alone.
 const ours = (m) => (m?.hooks || []).some((h) =>
-  /control-room/.test(String(h.command || '')) || String(h.command || '').includes(HOOK) ||
+  /nearly/.test(String(h.command || '')) || String(h.command || '').includes(HOOK) ||
   String(h.url || '').includes(`:${PORT}/hooks/`));
 for (const ev of Object.keys(settings.hooks)) {
   settings.hooks[ev] = (settings.hooks[ev] || []).filter((m) => !ours(m));
@@ -101,8 +101,8 @@ const push = spawnSync(process.execPath,
   { encoding: 'utf8' });
 
 // ---------------------------------------------------------------------------
-// Where the records are published. They are served by the Control Room's own
-// GitHub Pages, so read it from the Control Room's remote rather than asking.
+// Where the records are published. They are served by the Nearly's own
+// GitHub Pages, so read it from the Nearly's remote rather than asking.
 // ---------------------------------------------------------------------------
 function pagesUrl() {
   try {
@@ -117,13 +117,13 @@ function pagesUrl() {
     try { upstream = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository?.url || null; } catch { /* no manifest */ }
     const u = upstream && upstream.match(/github\.com[:/]([^/]+)\/([^/.]+)/i);
     if (u && u[1].toLowerCase() === m[1].toLowerCase() && u[2].toLowerCase() === m[2].toLowerCase()) return null;
-    return `https://${m[1].toLowerCase()}.github.io/${m[2]}/recaps`;
+    return `https://${m[1].toLowerCase()}.github.io/${m[2]}/records`;
   } catch { return null; }
 }
-const base = process.env.RECAP_URL_BASE || pagesUrl();
+const base = process.env.NEARLY_URL_BASE || pagesUrl();
 if (base && !off) {
   try {
-    const cfg = join(root, '.control-room.json');
+    const cfg = join(root, '.nearly.json');
     const prev = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')) : {};
     writeFileSync(cfg, JSON.stringify({ ...prev, urlBase: base }, null, 2) + '\n');
   } catch { /* the env var still works */ }
@@ -132,14 +132,14 @@ if (base && !off) {
 // ---------------------------------------------------------------------------
 console.log('');
 if (off) {
-  console.log(`${bold('Control Room off')} for ${dim(repo)}`);
+  console.log(`${bold('Nearly off')} for ${dim(repo)}`);
   console.log('  Claude Code hooks removed');
   console.log(push.status === 0 ? '  pre-push hook removed' : dim('  pre-push hook was not ours, left alone'));
   console.log('');
   process.exit(0);
 }
 
-console.log(`${ok('✓')} ${bold('Control Room is on')} for ${bold(name)}  ${dim(repo)}`);
+console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)}`);
 console.log('');
 console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);

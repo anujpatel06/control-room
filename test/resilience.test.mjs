@@ -36,7 +36,7 @@ test('a hook whose server cannot start stays silent and lets the session continu
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'hook.mjs'), 'pre-tool', 'x'], {
       input: JSON.stringify({ session_id: 's', tool_name: 'Bash', tool_input: { command: 'ls' } }),
       encoding: 'utf8', timeout: 30_000,
-      env: { ...process.env, CONTROL_ROOM_PORT: String(port) },
+      env: { ...process.env, NEARLY_PORT: String(port) },
     });
     assert.equal(r.status, 0, 'must exit 0 so Claude Code does not treat it as a failure');
     assert.equal(r.stdout.trim(), '', 'silence means "no opinion", which falls back to the normal prompt');
@@ -50,7 +50,7 @@ test('a hook starts the server when nothing is listening', async () => {
   const r = spawnSync(process.execPath, [join(root, 'scripts', 'hook.mjs'), 'session-start', 'coldstart'], {
     input: JSON.stringify({ session_id: 'cold-1', cwd: root }),
     encoding: 'utf8', timeout: 30_000,
-    env: { ...process.env, CONTROL_ROOM_PORT: String(port) },
+    env: { ...process.env, NEARLY_PORT: String(port) },
   });
   assert.equal(r.status, 0);
   const alive = await fetch(`http://127.0.0.1:${port}/health`).then((x) => x.json()).catch(() => null);
@@ -69,7 +69,7 @@ test('two servers racing for the port: the loser stands down quietly', async () 
   // ordinary. The loser crashing used to look like a bug in the agent.
   const port = freePort();
   const first = spawn(process.execPath, [join(root, 'server', 'index.mjs')], {
-    cwd: root, stdio: 'ignore', env: { ...process.env, CONTROL_ROOM_PORT: String(port) },
+    cwd: root, stdio: 'ignore', env: { ...process.env, NEARLY_PORT: String(port) },
   });
   for (let i = 0; i < 40; i++) {
     try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* waiting */ }
@@ -77,7 +77,7 @@ test('two servers racing for the port: the loser stands down quietly', async () 
   }
   const second = spawnSync(process.execPath, [join(root, 'server', 'index.mjs')], {
     cwd: root, encoding: 'utf8', timeout: 15_000,
-    env: { ...process.env, CONTROL_ROOM_PORT: String(port) },
+    env: { ...process.env, NEARLY_PORT: String(port) },
   });
   assert.equal(second.status, 0, 'losing the race is not an error');
   const still = await fetch(`http://127.0.0.1:${port}/health`).then((r) => r.json());

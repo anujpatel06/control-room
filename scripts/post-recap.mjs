@@ -1,12 +1,12 @@
 // Post a session's recap to the pull request for its branch, as a comment.
 //
-//   node scripts/post-recap.mjs <session-id | latest> [--url-base https://you.github.io/control-room/recaps] [--dry-run]
+//   node scripts/post-recap.mjs <session-id | latest> [--url-base https://you.github.io/nearly/recaps] [--dry-run]
 //
 // Uses the GitHub CLI (`gh pr comment`) in the repo the session ran in, so it
 // works with whatever account gh is logged in as. Nothing is uploaded: the
 // comment carries the computed summary and every narration line as text, plus
-// a link to the recap page when --url-base (or RECAP_URL_BASE) says where the
-// ui/recaps folder is hosted. Without a base URL the comment says where the
+// a link to the record page when --url-base (or NEARLY_URL_BASE) says where the
+// ui/records folder is hosted. Without a base URL the comment says where the
 // file lives locally. --dry-run prints the comment and posts nothing.
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -19,12 +19,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const dry = argv.includes('--dry-run');
 const ubIdx = argv.indexOf('--url-base');
-const urlBase = (ubIdx !== -1 ? argv[ubIdx + 1] : process.env.RECAP_URL_BASE || '').replace(/\/$/, '');
+const urlBase = (ubIdx !== -1 ? argv[ubIdx + 1] : process.env.NEARLY_URL_BASE || '').replace(/\/$/, '');
 const target = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--url-base') || 'latest';
 
-const dir = join(root, 'recaps');
+const dir = join(root, 'records');
 const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-if (!files.length) { console.error('no storyboards in recaps/. Run build-recap first.'); process.exit(1); }
+if (!files.length) { console.error('no storyboards in records/. Run build-recap first.'); process.exit(1); }
 let file;
 if (target === 'latest') {
   file = files.map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)[0].f;
@@ -48,7 +48,7 @@ lines.push(sb.runs > 1
 lines.push('');
 lines.push(urlBase
   ? `**[Watch the record (${mmss(sb.totalS)})](${urlBase}/${slug}.html)** · ${sb.runs > 1 ? `${sb.runs} agent sessions` : `agent \`${sb.name}\``} · ${sb.model} · ${sb.date}`
-  : `Record: \`ui/recaps/${slug}.html\` in the Control Room checkout (${mmss(sb.totalS)}, not hosted yet) · ${sb.runs > 1 ? `${sb.runs} agent sessions` : `agent \`${sb.name}\``} · ${sb.model} · ${sb.date}`);
+  : `Record: \`ui/records/${slug}.html\` in the Nearly checkout (${mmss(sb.totalS)}, not hosted yet) · ${sb.runs > 1 ? `${sb.runs} agent sessions` : `agent \`${sb.name}\``} · ${sb.model} · ${sb.date}`);
 lines.push('');
 if (outcome?.notDone?.length) {
   lines.push(`> **${outcome.notDone.length} thing${outcome.notDone.length > 1 ? 's' : ''} the agent wanted to do did not happen.** The diff cannot show you this.`);
@@ -69,7 +69,7 @@ lines.push('');
 lines.push(`<sub>Every number above was computed from the session recording. ${sb.polished ? 'Sentences were rewritten by a model; facts were not.' : 'No model wrote any of it.'}</sub>`);
 // A hidden marker so we can find our own comment again on the next push and
 // edit it, instead of stacking a new one on every push until nobody reads any.
-const MARKER = '<!-- control-room:session-record -->';
+const MARKER = '<!-- nearly:session-record -->';
 const body = `${MARKER}\n${lines.join('\n')}`;
 
 if (dry) { console.log(body); process.exit(0); }
