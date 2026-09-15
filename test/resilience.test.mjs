@@ -289,15 +289,16 @@ test('a hook is never written to call a command that will not exist', async () =
   try {
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], {
       encoding: 'utf8',
-      // The disappearing shim first, exactly as npx arranges it.
-      env: { ...process.env, PATH: `${npxBin}:${process.env.PATH}`, NEARLY_NO_INSTALL: '1' },
+      // Only the disappearing shim and the system basics. A real `nearly`
+      // installed on the machine running the tests would otherwise be found and
+      // correctly trusted, hiding what this is checking.
+      env: { ...process.env, PATH: `${npxBin}:/usr/bin:/bin`, NEARLY_NO_INSTALL: '1' },
     });
     assert.equal(r.status, 0, r.stderr);
     const cmd = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'))
       .hooks.PreToolUse[0].hooks[0].command;
-    assert.notEqual(cmd, 'nearly hook pre-tool ' + cmd.split(' ').pop(),
-      'must not trust a command that lives in the npx cache');
-    assert.doesNotMatch(cmd, /^nearly hook/, `wrote a command that will vanish: ${cmd}`);
+    assert.doesNotMatch(cmd, /^nearly hook/,
+      `wrote a bare command that only exists while npx runs: ${cmd}`);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeNpx, { recursive: true, force: true });
