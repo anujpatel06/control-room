@@ -59,30 +59,27 @@ No dependencies, so the link is instant. Once published it becomes `npx nearly-c
 
 ### Upgrading
 
-```bash
-npm install -g nearly-cli@latest
-```
+It updates itself. When you run a command and a newer version exists, Nearly
+installs it and tells you it did, then every repo you turned it on for is on the
+new version with nothing to turn on again.
 
-That is the whole upgrade. Hooks invoke `nearly` by name and resolve it fresh
-each time they fire, so every repo you turned it on for picks up the new version
-at once and nothing has to be turned on again.
+Four rules keep that from being something you regret installing:
 
-Nothing updates on its own: npm never pushes anything to anyone's machine. What
-you get instead is a notice. Once a day, when you run a command and are already
-waiting on it, `nearly` checks whether a newer version exists and tells you in
-two lines. It never runs in the hook path, so a registry lookup can never sit in
-front of an action an agent is waiting to take, and it goes quiet on a failed
-network rather than making it your problem. `NEARLY_NO_UPDATE_CHECK=1` turns it
-off for good.
+- **Never in the hook path.** Nothing about updating may sit in front of an
+  action an agent is waiting on. Only commands you typed can trigger it, and
+  there is a test asserting the hook file does not even import the updater.
+- **Never across a major version.** Nearly decides whether `rm -rf` runs. Same
+  major means same promises; a major bump is announced and left for you to read
+  before you trust it.
+- **Never silent.** An update that happened without being mentioned is
+  indistinguishable from a compromise, so it always says what it did.
+- **Never fatal.** No network, a locked global directory, a slow registry: you
+  keep the version you have, the command you ran still works, and it tells you
+  rather than leaving you to assume you are current.
 
-Two exceptions to the one-command upgrade, and `nearly` says which applies when
-you turn it on:
-
-- Run through `npx` with nothing installed globally, and the hooks are pinned to
-  the version that wrote them, on purpose: resolving `@latest` before every tool
-  call would put a registry lookup in front of every action an agent takes. Run
-  `nearly` again in the repo after upgrading to move it forward.
-- Run from a clone, and `git pull` is the upgrade.
+It checks once a day, not on every command. `NEARLY_NO_UPDATE=1` turns it off
+for good. Running through `npx` or from a checkout, it tells you instead of
+touching anything, because an npx run is ephemeral and a checkout is yours.
 
 **There is no server to start.** The hooks start it the first time they need it, in about a second, and it stays up. If it cannot start, Claude Code falls back to its own permission prompts and your session continues. Nothing to remember and nothing to break.
 

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -176,26 +176,64 @@ test('hooks resolve the command fresh, so upgrading reaches every repo', () => {
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-test('the update check never delays an agent and never fails a command', async () => {
-  const { updateCheck } = await import('../scripts/update-check.mjs');
+test('the updater never delays an agent and never fails a command', async () => {
+  const mod = join(root, 'scripts', 'update-check.mjs');
 
-  // Off when asked.
-  assert.equal(await updateCheck.call(null), null, 'no TTY in tests, so it stays quiet');
-
-  // A hook must never carry a registry lookup: the notice is wired only to
-  // commands a person typed, so the hook command must not import it at all.
+  // A hook must never carry a registry lookup or a package install.
   const hookSrc = readFileSync(join(root, 'scripts', 'hook.mjs'), 'utf8');
-  assert.doesNotMatch(hookSrc, /update-check|registry\.npmjs/, 'the hook path must stay clean');
+  assert.doesNotMatch(hookSrc, /update-check|registry\.npmjs|npm.*install/,
+    'nothing may sit in front of an action an agent is waiting on');
 
-  // And a broken network must not break a command.
-  const r = spawnSync(process.execPath, ['-e', `
-    process.env.NEARLY_NO_UPDATE_CHECK = '';
+  // A dead network must not break the command it was attached to.
+  const offline = spawnSync(process.execPath, ['-e', `
     global.fetch = () => Promise.reject(new Error('offline'));
-    const m = await import(${JSON.stringify(join(root, 'scripts', 'update-check.mjs'))});
-    const out = await m.updateCheck();
-    m.printUpdate(out);
+    const m = await import(${JSON.stringify(mod)});
+    m.applyUpdate(await m.checkForUpdate());
     console.log('survived');
   `.trim()], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(offline.status, 0, offline.stderr);
+  assert.match(offline.stdout, /survived/);
+
+  // Turned off means off.
+  const off = spawnSync(process.execPath, ['-e', `
+    global.fetch = () => { throw new Error('should not have been called'); };
+    const m = await import(${JSON.stringify(mod)});
+    console.log(JSON.stringify(await m.checkForUpdate()));
+  `.trim()], { encoding: 'utf8', timeout: 20_000, env: { ...process.env, NEARLY_NO_UPDATE: '1' } });
+  assert.equal(off.status, 0, off.stderr);
+  assert.match(off.stdout, /null/);
+});
+
+test('a major version is announced, never installed behind your back', async () => {
+  // Same major, same promises. A gate whose rules may have changed is read
+  // before it is trusted, so the install is left to the person.
+  const mod = join(root, 'scripts', 'update-check.mjs');
+  const r = spawnSync(process.execPath, ['-e', `
+    const m = await import(${JSON.stringify(mod)});
+    m.applyUpdate({ name: 'nearly-cli', from: '0.9.0', to: '1.0.0', major: true, kind: 'global' });
+  `.trim()], { encoding: 'utf8', timeout: 20_000 });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /survived/);
+  assert.match(r.stdout, /major version/i, 'it has to say why it stopped');
+  assert.match(r.stdout, /npm install -g/, 'and hand over the command');
+  assert.doesNotMatch(r.stdout, /Updating Nearly/, 'and must not have run it');
+});
+
+test('a failed update says so rather than leaving you to assume', async () => {
+  // A global directory this user cannot write to is the common case. Believing
+  // you are current when you are not is worse than knowing you are behind.
+  const mod = join(root, 'scripts', 'update-check.mjs');
+  const fakeBin = mkdtempSync(join(tmpdir(), 'cr-bin-'));
+  writeFileSync(join(fakeBin, 'npm'), '#!/bin/sh\nexit 1\n');
+  spawnSync('chmod', ['+x', join(fakeBin, 'npm')]);
+  const r = spawnSync(process.execPath, ['-e', `
+    const m = await import(${JSON.stringify(mod)});
+    m.applyUpdate({ name: 'nearly-cli', from: '0.1.0', to: '0.1.1', major: false, kind: 'global' });
+  `.trim()], {
+    encoding: 'utf8', timeout: 30_000,
+    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+  });
+  assert.equal(r.status, 0, 'a failed update must not fail the command');
+  assert.match(r.stdout, /could not/i);
+  assert.match(r.stdout, /npm install -g/, 'and tells you how to do it yourself');
+  rmSync(fakeBin, { recursive: true, force: true });
 });

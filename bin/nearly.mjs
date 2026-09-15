@@ -27,8 +27,8 @@ const run = async (file, args = []) => {
   const r = spawnSync(process.execPath, [file, ...args], { stdio: 'inherit' });
   if (NOTIFY.has(cmd) && (r.status ?? 0) === 0) {
     try {
-      const { updateCheck, printUpdate } = await import('../scripts/update-check.mjs');
-      printUpdate(await updateCheck());
+      const { checkForUpdate, applyUpdate } = await import('../scripts/update-check.mjs');
+      applyUpdate(await checkForUpdate());
     } catch { /* an update notice is never worth an error */ }
   }
   process.exit(r.status ?? 0);
