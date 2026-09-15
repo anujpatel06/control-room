@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-// One Claude Code hook event, forwarded to the Nearly.
+// One agent hook event, forwarded to the Nearly.
 //
-//   node scripts/hook.mjs <event> <repo-name>
+//   node scripts/hook.mjs <event> <repo-name> [--adapter=<id>]
+//
+// <event> is always one of Nearly's own names (pre-tool, stop, ...) because
+// attach picks it when it writes the hook. --adapter names whose dialect is
+// arriving on stdin; without one, Claude Code's is assumed and the payload is
+// forwarded untouched, which keeps the oldest path the simplest one.
 //
 // Claude Code writes the event as JSON on stdin and reads our answer from
 // stdout. We sit in between so the server does not have to be running before
@@ -20,14 +25,21 @@
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { byId } from '../server/adapters.mjs';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.NEARLY_PORT || 47653);
 const BASE = `http://${HOST}:${PORT}`;
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const [, , event, name = 'repo'] = process.argv;
+const args = process.argv.slice(2);
+const flag = args.find((a) => a.startsWith('--adapter='));
+const positional = args.filter((a) => !a.startsWith('--'));
+const [event, name = 'repo'] = positional;
 if (!event) process.exit(0);
+
+// An unknown id is a typo in a config file, not a reason to wedge the agent.
+const adapter = flag ? byId(flag.slice('--adapter='.length)) : null;
 
 const body = await new Promise((r) => {
   let s = '';
@@ -65,14 +77,36 @@ if (!(await up()) && !(await start())) process.exit(0);   // fail open, silently
 // stall the agent.
 const budget = event === 'pre-tool' ? 600_000 : 15_000;
 
+// Translate on the way in. A payload we cannot parse is forwarded as it came,
+// so a harness that changes its shape degrades to Claude Code's rather than to
+// nothing.
+let payload = body || '{}';
+if (adapter && adapter.normalize) {
+  try { payload = JSON.stringify(adapter.normalize(event, JSON.parse(body || '{}'))); }
+  catch { /* keep the original */ }
+}
+
 try {
   const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: body || '{}',
+    body: payload,
     signal: AbortSignal.timeout(budget),
   });
   const text = await res.text();
+
+  // ...and on the way out. Rendering is what makes a deny actually land: half of
+  // these harnesses would read Claude Code's answer as no answer at all, and an
+  // unread deny is a gate that reports success while allowing everything.
+  if (adapter && adapter.render) {
+    let answer = {};
+    try { answer = JSON.parse(text || '{}'); } catch { /* treat as no answer */ }
+    const out = adapter.render(event, answer);
+    if (out.stderr) process.stderr.write(out.stderr);
+    if (out.stdout) process.stdout.write(out.stdout);
+    process.exit(out.exit || 0);
+  }
+
   if (text && text !== '{}') process.stdout.write(text);
 } catch { /* fail open */ }
 

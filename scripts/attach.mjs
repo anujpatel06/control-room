@@ -6,8 +6,10 @@
 //
 // One command, once per repo. It installs everything and works out the rest:
 //
-//   · Claude Code hooks, so every session in this repo is gated and recorded
-//     whether you start it in a terminal, in VS Code, or in JetBrains
+//   · hooks for every coding agent this repo is driven by, so sessions are
+//     gated and recorded whether you start them in a terminal, in VS Code or in
+//     JetBrains. Claude Code always; Cursor, Antigravity, Copilot, Codex, Gemini
+//     and Windsurf when the repo shows signs of them, or on --agent=
 //   · a git pre-push hook, so the record is offered when the work leaves your
 //     machine
 //   · where the records are published, read from the Nearly's own remote
@@ -21,7 +23,8 @@ import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dataRoot } from '../server/paths.mjs';
-import { report } from './detect.mjs';
+import { choose, installed as agentsOnMachine } from './detect.mjs';
+import { ADAPTERS } from '../server/adapters.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
@@ -126,43 +129,31 @@ if (!existsSync(join(repo, '.git'))) {
 if (!off && installGlobally()) installed = onPath();
 
 // ---------------------------------------------------------------------------
-// Claude Code hooks
+// Agent hooks
 // ---------------------------------------------------------------------------
-const dir = join(repo, '.claude');
-const file = join(dir, 'settings.local.json');
-mkdirSync(dir, { recursive: true });
-
-let settings = {};
-if (existsSync(file)) {
-  try { settings = JSON.parse(readFileSync(file, 'utf8')); }
-  catch (e) { console.error(`Could not read ${file}: ${e.message}`); process.exit(1); }
-}
-settings.hooks = settings.hooks || {};
-
-// Recognise our own entries by the script they run, so this is safe to re-run
-// and leaves anyone else's hooks alone.
-const ours = (m) => (m?.hooks || []).some((h) =>
-  /nearly/.test(String(h.command || '')) || String(h.command || '').includes(HOOK) ||
-  String(h.url || '').includes(`:${PORT}/hooks/`));
-for (const ev of Object.keys(settings.hooks)) {
-  settings.hooks[ev] = (settings.hooks[ev] || []).filter((m) => !ours(m));
-  if (!settings.hooks[ev].length) delete settings.hooks[ev];
+// Turning off removes every adapter, not just the ones this repo still shows
+// signs of, so nothing is left behind pointing at a command that will not run.
+const { chosen, unknown } = off ? { chosen: ADAPTERS, unknown: [] } : choose(repo, argv);
+if (unknown.length) {
+  console.error(`Unknown agent: ${unknown.join(', ')}`);
+  console.error(`Known: ${ADAPTERS.map((a) => a.id).join(', ')}`);
+  process.exit(1);
 }
 
-if (!off) {
-  const entry = (ev, timeout) => ({
-    hooks: [{ type: 'command', command: `${hookCmd(ev)} ${name}`, timeout }],
-  });
-  const add = (event, ev, timeout) => { settings.hooks[event] = [...(settings.hooks[event] || []), entry(ev, timeout)]; };
-  add('SessionStart', 'session-start', 20);
-  add('UserPromptSubmit', 'prompt', 20);
-  add('PreToolUse', 'pre-tool', 600);   // long enough to hold while a human decides
-  add('PostToolUse', 'post-tool', 20);
-  add('Stop', 'stop', 30);
-  add('SessionEnd', 'session-end', 120);
+const wired = [];
+const notes = [];
+for (const a of chosen) {
+  const cmdFor = (ev) => `${hookCmd(ev)} ${name}` + (a.id === 'claude-code' ? '' : ` --adapter=${a.id}`);
+  try {
+    const r = off ? a.uninstall({ repo }) : a.install({ repo, cmdFor, name });
+    if (r?.error) { notes.push(`${a.name}: ${r.error}`); continue; }
+    if (off ? r?.removed : r?.file) wired.push({ ...a, file: r.file });
+    if (r?.note) notes.push(`${a.name}: ${r.note}`);
+  } catch (e) {
+    // One harness's config being unwritable must not cost you the others.
+    notes.push(`${a.name}: ${e.message}`);
+  }
 }
-if (!Object.keys(settings.hooks).length) delete settings.hooks;
-writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
 
 // ---------------------------------------------------------------------------
 // git pre-push hook
@@ -214,7 +205,9 @@ if (base && !off) {
 console.log('');
 if (off) {
   console.log(`${bold('Nearly off')} for ${dim(repo)}`);
-  console.log('  Claude Code hooks removed');
+  console.log(wired.length
+    ? `  hooks removed: ${wired.map((a) => a.name).join(', ')}`
+    : '  no agent hooks of ours were installed');
   console.log(push.status === 0 ? '  pre-push hook removed' : dim('  pre-push hook was not ours, left alone'));
   console.log('');
   process.exit(0);
@@ -222,7 +215,10 @@ if (off) {
 
 console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)}`);
 console.log('');
-console.log(`  ${ok('·')} every Claude Code session here is gated and recorded`);
+for (const a of wired) {
+  const how = a.verified ? dim(`(${a.verified})`) : dim('(built to their published hook spec, not yet run against a live agent)');
+  console.log(`  ${ok('·')} ${a.name} sessions here are gated and recorded ${how}`);
+}
 console.log(`  ${ok('·')} ${dim(updateNote())}`);
 console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
 if (base) {
@@ -234,11 +230,17 @@ if (base) {
   console.log(`    ${dim('to link them from a pull request, host that folder anywhere and:')}`);
   console.log(`    ${dim('NEARLY_URL_BASE=https://your-host/records nearly')}`);
 }
-console.log('');
-// Say plainly if this repo is also driven by an agent Nearly cannot gate, so
-// nobody walks away believing they are covered when they are not.
-const other = report(repo, { dim, bold });
-if (other) console.log(other);
+for (const n of notes) console.log(`  ${dim('·')} ${dim(n)}`);
+
+// An agent you have on this machine but have not used here is worth a word, and
+// nothing more: having it installed is no reason to write files into this repo.
+const elsewhere = agentsOnMachine().filter((i) => !wired.some((w) => w.id === i.id));
+if (elsewhere.length) {
+  console.log('');
+  console.log(dim(`  Also installed here: ${elsewhere.map((e) => e.name).join(', ')}.`));
+  console.log(dim(`  Nothing in this repo suggests you use them for it, so they were left alone:`));
+  console.log(dim(`  nearly --agent=${elsewhere[0].id} turns one on.`));
+}
 
 console.log('');
 console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);

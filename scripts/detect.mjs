@@ -1,37 +1,34 @@
-// Which coding agents are in use here, and which of them Nearly can actually gate.
+// Which coding agents is this repo actually driven by?
 //
-// The IDE is not the question. Claude Code inside VS Code is still Claude Code
-// and Nearly works there unchanged. What matters is the harness making the tool
-// calls, because that is what exposes the hook Nearly attaches to.
+// The IDE is not the question. Claude Code inside VS Code or a JetBrains IDE is
+// still Claude Code, reading the same settings file, so those need nothing. What
+// matters is the harness making the tool calls, because that is what exposes the
+// hook Nearly attaches to.
 //
-// This exists to stop the worst outcome: somebody running Nearly in a repo where
-// they drive Cursor or Antigravity, seeing a tick, and believing they are gated
-// when nothing of theirs is. Reporting success while doing nothing is the exact
-// failure this project was built to catch.
+// This exists so nobody has to know that. You run one command; it finds what you
+// use here and turns the gate on for each of them.
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { ADAPTERS, byId } from '../server/adapters.mjs';
 
-// Ordered by how likely a signal is to mean real use rather than a stray file.
-const AGENTS = [
-  { id: 'claude-code', name: 'Claude Code', supported: true,
-    marks: ['.claude/settings.json', '.claude/CLAUDE.md', 'CLAUDE.md'], cmds: ['claude'] },
-  { id: 'cursor', name: 'Cursor', supported: false, hook: 'beforeShellExecution',
-    marks: ['.cursor/hooks.json', '.cursor/rules', '.cursorrules'], cmds: ['cursor'] },
-  { id: 'antigravity', name: 'Antigravity', supported: false, hook: 'PreToolUse',
-    marks: ['.agents/hooks.json', '.antigravity'], cmds: ['agy'] },
-  { id: 'copilot', name: 'GitHub Copilot', supported: false, hook: 'preToolUse',
-    marks: ['.github/hooks', '.github/copilot-instructions.md'], cmds: ['copilot'] },
-  { id: 'windsurf', name: 'Windsurf', supported: false, hook: 'pre_run_command',
-    marks: ['.windsurf/hooks.json', '.windsurfrules'], cmds: ['windsurf'] },
-  { id: 'codex', name: 'Codex', supported: false, hook: 'PreToolUse',
-    marks: ['.codex/hooks.json', 'AGENTS.md'], cmds: ['codex'] },
-  { id: 'gemini-cli', name: 'Gemini CLI', supported: false, hook: 'BeforeTool',
-    marks: ['.gemini/settings.json'], cmds: ['gemini'] },
-  { id: 'junie', name: 'JetBrains Junie', supported: false, hook: 'PreToolUse',
-    marks: ['.junie'], cmds: [] },
-];
+// Signals beyond each adapter's own config file: the files a harness leaves in a
+// repo whether or not anybody has configured hooks in it.
+const MARKS = {
+  'claude-code': ['.claude', 'CLAUDE.md', '.claude/settings.json'],
+  cursor: ['.cursor', '.cursorrules', '.cursor/rules'],
+  antigravity: ['.agents', '.antigravity'],
+  copilot: ['.github/copilot-instructions.md', '.github/hooks'],
+  codex: ['.codex', 'AGENTS.md'],
+  gemini: ['.gemini'],
+  windsurf: ['.windsurf', '.windsurfrules'],
+};
+
+const CLIS = {
+  'claude-code': ['claude'], cursor: ['cursor-agent'], antigravity: ['agy'],
+  copilot: ['copilot'], codex: ['codex'], gemini: ['gemini'], windsurf: ['windsurf'],
+};
 
 function onPath(cmd) {
   try {
@@ -41,30 +38,38 @@ function onPath(cmd) {
   } catch { return false; }
 }
 
+// A config file in the repo is evidence about this repo. A CLI on PATH is only
+// evidence about the machine, so it is reported separately and never acted on:
+// having Gemini installed is not a reason to write files into someone's project.
 export function detect(repo) {
   const found = [];
-  for (const a of AGENTS) {
-    const inRepo = a.marks.some((m) => existsSync(join(repo, m)));
-    // A command on PATH alone is weak evidence: plenty of people have a CLI
-    // installed and do not use it here. Only count it for the repo's own marks.
-    const installed = a.cmds.some(onPath);
-    if (inRepo || (installed && a.id === 'claude-code')) {
-      found.push({ ...a, why: inRepo ? 'configured in this repo' : 'installed' });
-    }
+  for (const a of ADAPTERS) {
+    const marks = [a.config, ...(MARKS[a.id] || [])];
+    const inRepo = marks.some((m) => existsSync(join(repo, m)));
+    if (inRepo) found.push({ id: a.id, name: a.name, why: 'configured in this repo' });
   }
   return found;
 }
 
-// One honest paragraph about what is and is not covered here.
-export function report(repo, { dim, bold }) {
-  const found = detect(repo);
-  const others = found.filter((a) => !a.supported);
-  if (!others.length) return null;
+export function installed() {
+  return ADAPTERS
+    .filter((a) => (CLIS[a.id] || []).some(onPath))
+    .map((a) => ({ id: a.id, name: a.name, why: 'installed on this machine' }));
+}
 
-  const lines = [''];
-  lines.push(`  ${bold('Nearly gates Claude Code.')} This repo also looks set up for:`);
-  for (const a of others) lines.push(`    ${a.name} ${dim(`(${a.why})`)}`);
-  lines.push(dim('    Those are not gated yet. Sessions you run in them are neither held nor recorded.'));
-  lines.push(dim(`    Each exposes a comparable hook, so an adapter is small: github.com/anujpatel06/nearly/issues`));
-  return lines.join('\n');
+// What attach should turn on: everything this repo shows signs of, and Claude
+// Code either way, since it is the one that has been run end to end.
+//
+//   --agent=cursor,gemini   exactly these
+//   --agent=all             every adapter there is
+export function choose(repo, argv = []) {
+  const flag = argv.find((a) => a.startsWith('--agent='));
+  if (flag) {
+    const want = flag.slice('--agent='.length).split(',').map((s) => s.trim()).filter(Boolean);
+    if (want.includes('all')) return { chosen: ADAPTERS, unknown: [] };
+    const chosen = want.map(byId).filter(Boolean);
+    return { chosen, unknown: want.filter((w) => !byId(w)) };
+  }
+  const ids = new Set(['claude-code', ...detect(repo).map((d) => d.id)]);
+  return { chosen: ADAPTERS.filter((a) => ids.has(a.id)), unknown: [] };
 }

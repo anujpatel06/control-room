@@ -22,7 +22,7 @@ Watch the first thirty seconds. The cover says what the diff cannot: an action t
 
 ## What it needs
 
-Node 18 or newer, Claude Code signed in, and git. No dependencies and no API key: agents run on your existing Claude subscription.
+Node 18 or newer, git, and one of the seven coding agents below signed in. No dependencies and no API key of its own: agents run on whatever subscription you already have.
 
 ### Platforms
 
@@ -48,28 +48,70 @@ an issue with what broke would be genuinely useful.
 
 ### Agents
 
-Nearly gates **Claude Code**. The editor around it does not matter: Claude Code
-in VS Code, in a JetBrains IDE, in a plain terminal or over SSH all read the same
-`.claude/settings.local.json`, so all four are already covered. Neither does the
-model — the gate sits between the agent and your machine, below whichever model
-is answering.
+The editor is not the question. Claude Code in VS Code, in a JetBrains IDE, in a
+plain terminal or over SSH all read the same `.claude/settings.local.json`, so
+all four are already covered. Neither is the model — the gate sits between the
+agent and your machine, below whichever model is answering.
 
-What does matter is the harness making the tool calls. Cursor, Antigravity,
-Windsurf, Copilot CLI, Codex and Gemini CLI each expose a comparable blocking
-hook under a different name and payload shape, and each needs a small adapter
-before Nearly can hold anything they do. None of those exist yet.
+The harness making the tool calls is the question, because that is what exposes
+the hook. Seven are supported:
 
-Because believing you are gated when you are not is worse than knowing you are
-not, `nearly` says so on the way in:
+| | Config it writes | Holds for a human | Record |
+|---|---|---|---|
+| Claude Code | `.claude/settings.local.json` | yes | full |
+| Cursor | `.cursor/hooks.json` | yes | full |
+| Antigravity | `.agents/hooks.json` | yes | full |
+| GitHub Copilot CLI | `.github/hooks/nearly.json` | yes | full |
+| Gemini CLI | `.gemini/settings.json` | yes | full |
+| Codex CLI | `.codex/hooks.json` | yes | no prompts, one turn |
+| Windsurf | `.windsurf/hooks.json` | until Cascade gives up | shell and file tools only |
+
+`nearly` turns on whichever of these the repo shows signs of, and Claude Code
+either way. `nearly --agent=cursor` forces one, `--agent=all` forces all of them,
+and `nearly agents` prints what is actually wired here.
+
+**One of these rows is not like the others.** Claude Code has been run end to end
+against a live agent. The other six are built from each vendor's published hook
+documentation and tested against payloads copied from it — every adapter has to
+refuse `rm -rf` and have that refusal land in words its harness acts on, or the
+suite fails. That is a good bet. It is not the same as having watched it work,
+and `nearly agents` says so in as many words:
 
 ```
-  Nearly gates Claude Code. This repo also looks set up for:
-    Cursor (configured in this repo)
-    Those are not gated yet. Sessions you run in them are neither held nor recorded.
+  Run against a live agent: Claude Code
+  Built to the vendor's published hook spec and tested against payloads
+  copied from it, but never yet run against the real thing:
+    Cursor, Antigravity, GitHub Copilot CLI, Codex CLI, Gemini CLI, Windsurf
 ```
 
-If the harness you use is missing, open an issue saying which one. That is the
-order they get built in.
+If you use one of those six, the most useful thing you can do is try it and open
+an issue saying what broke.
+
+#### What the adapters actually do
+
+The server speaks one dialect. Everything downstream of a hook — the consent
+gradient, the recording, the record page, the PR comment — reads Claude Code's
+shape and nothing else. An adapter is a translation at the edge, about thirty
+lines: their payload in, ours out; our answer in, theirs out.
+
+Two decisions make that small enough to trust. Nearly never asks the harness to
+ask — every one of them can prompt, and we want none of it, because their dialog
+is not the record. We hold the hook open and answer once a human has. And tools
+are matched by shape as well as by name: `run_command`, `shell`,
+`run_terminal_cmd` and `bash` are all Bash, and anything carrying a command
+string is treated as Bash even if nobody here has heard of it — because if it
+isn't, the never-rules don't apply to it and `rm -rf` walks through a gate that
+reports itself as working. Anything still unrecognised falls to `ask`.
+
+The harness's own name for the tool travels with the call, so the record says
+`run_command` where Antigravity said `run_command`, while the rule you set
+applies to every one of them.
+
+#### Not supported
+
+Zed's built-in agent, Aider, Kilo Code, Warp and the hosted builders (Replit,
+Lovable, Bolt, v0) expose no blocking pre-tool hook. There is nothing to attach
+to, and no adapter can change that.
 
 ## Use it on your own repo
 
@@ -88,7 +130,8 @@ npx nearly-cli
 ```
 ✓ Nearly is on for my-app
 
-  · every Claude Code session here is gated and recorded
+  · Claude Code sessions here are gated and recorded (run end to end against a live agent)
+  · Cursor sessions here are gated and recorded (built to their published hook spec, not yet run against a live agent)
   · upgrades reach this repo automatically
   · the record is offered when you push
 
@@ -273,12 +316,16 @@ Claude Code treats a hook that times out, errors, or returns anything other than
 npm test
 ```
 
-41 tests, no dependencies, about 30 seconds. They run on a fresh clone with no
+83 tests, no dependencies, about 50 seconds. They run on a fresh clone with no
 agent, no network and no Claude subscription, because the fixtures are the two
 recorded sessions committed in `recordings/demo`.
 
 What they hold the project to:
 
+- **Every adapter.** That `rm -rf` is refused in all seven harnesses' dialects,
+  that the refusal comes back in words each one acts on, that a session appears
+  from whichever field that harness calls its session id, and that a payload none
+  of them would ever send leaves the agent working rather than hanging.
 - **The consent gradient.** That destructive commands are denied without asking,
   that a never pattern still fires when the command is buried in a chain, that an
   unclassified tool is held rather than allowed, and that "always" for `git status`
@@ -303,11 +350,12 @@ The claim this project makes is testable: a reviewer who sees the session record
 ## Roadmap
 
 - **Read Prempti's audit trail as an input.** Their recording is structured, local, Apache-licensed and covers more than ours. The recap builder reads its own JSONL today; a second reader would let anyone already running Prempti get a session record without changing their gate.
-- **A Cursor adapter.** The server speaks JSON in and JSON out, so a tool that runs a script instead of calling a URL needs about twenty lines of translation. Cursor's `beforeShellExecution` is the first target.
+- **Run the six unverified adapters against their real agents.** They are built to spec and tested against the vendors' own documented payloads, but documentation is not a build. Each one that gets run for real either becomes a verified row or becomes a bug report.
 - **Port the recap player to React.** It is one self-contained page today.
 
 ## Files
 
+- `server/adapters.mjs`, the seven harnesses and the translation at each edge
 - `server/index.mjs`, spawn sessions, hooks, policy, recorder, undo
 - `ui/index.html`, sessions, triage of pending approvals, rules, log
 - `scripts/attach.mjs`, install or remove the hooks in a repo of your own; `scripts/post-recap.mjs`, comment the recap on its PR

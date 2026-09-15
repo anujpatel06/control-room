@@ -6,6 +6,7 @@
 //   nearly open         open the dashboard
 //   nearly record       build the record for the current branch
 //   nearly post         put that record on the pull request
+//   nearly agents       which agents this repo is gated for
 //   nearly voices       list the narration voices you have
 //   nearly server       run the server in the foreground (it self-starts otherwise)
 //   nearly hook <ev>    internal: what the Claude Code hooks call
@@ -34,7 +35,12 @@ const run = async (file, args = []) => {
   process.exit(r.status ?? 0);
 };
 
-const [cmd = 'attach', ...rest] = process.argv.slice(2);
+// A leading flag is not a command. `nearly --agent=cursor` and `nearly --off`
+// are how the docs say to do those things, and both used to land on "Unknown
+// command" because the first argument was read as a subcommand name.
+const argv = process.argv.slice(2);
+const leadingFlag = argv[0]?.startsWith('-') && !['--help', '-h', '--which'].includes(argv[0]);
+const [cmd = 'attach', ...rest] = leadingFlag ? ['attach', ...argv] : argv;
 
 async function main() {
 switch (cmd) {
@@ -68,6 +74,9 @@ switch (cmd) {
   case 'publish':
     return run(s('publish-pages.mjs'), rest);
 
+  case 'agents':
+    return run(s('agents.mjs'), rest);
+
   case 'voices':
     return run(s('build-recap.mjs'), ['--voices']);
 
@@ -92,6 +101,7 @@ switch (cmd) {
   nearly open         open the dashboard
   nearly record       build the record for the current branch
   nearly post         put that record on the pull request
+  nearly agents       which agents this repo is gated for
   nearly voices       list the narration voices you have
   nearly server       run the server in the foreground
 `);

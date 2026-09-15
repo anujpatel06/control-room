@@ -363,14 +363,18 @@ const server = http.createServer(async (req, res) => {
     if (ev === 'pre-tool') {
       const { tier, reason } = classifyWith(hook, rules);
       const id = hook.tool_use_id || randomUUID();
+      // Policy keys on the canonical name so a rule means the same thing in every
+      // harness; the record shows the harness's own name so it stays truthful
+      // about what actually ran.
+      const shown = hook.tool_label || hook.tool_name;
       const respond = (decision, why) => hookOk(res, {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `nearly: ${why}` },
       });
       if (!s) return respond('deny', 'unknown session');
-      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: hook.tool_name, input: hook.tool_input, tier }); return respond('deny', `never (${reason})`); }
-      if (tier === 'log') { record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: 'policy', tool: hook.tool_name, input: hook.tool_input, tier }); return respond('allow', `do and log (${reason})`); }
+      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('deny', `never (${reason})`); }
+      if (tier === 'log') { record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('allow', `do and log (${reason})`); }
       // ask: hold the response until the UI decides, or fail closed
-      const item = { id, sid, tool: hook.tool_name, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), respond };
+      const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), respond };
       item.timer = setTimeout(() => decide(sid, id, 'deny', 'no human answer; nearly fails closed'), ASK_TIMEOUT_MS);
       s.pending.set(id, item);
       s.state = 'waiting';
@@ -380,7 +384,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (ev === 'post-tool') {
-      if (s) record(sid, { type: 'post_tool', id: hook.tool_use_id, tool: hook.tool_name, duration_ms: hook.duration_ms, response: trim(hook.tool_response ?? '') });
+      if (s) record(sid, { type: 'post_tool', id: hook.tool_use_id, tool: hook.tool_label || hook.tool_name, duration_ms: hook.duration_ms, response: trim(hook.tool_response ?? '') });
       return hookOk(res);
     }
     if (ev === 'stop') {
