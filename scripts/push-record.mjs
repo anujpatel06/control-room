@@ -94,11 +94,24 @@ try {
   applyUpdate(await checkForUpdate());
 } catch { /* never worth failing a push over */ }
 
-// gh is only useful if there is a pull request to comment on
+// Finding the pull request needs gh. Not having it and not having a pull
+// request are different problems with the same silence, and they were reported
+// as the same sentence — which sent people off to raise a pull request they
+// were already looking at.
 const hasGh = spawnSync('gh', ['--version'], { encoding: 'utf8' }).status === 0;
-const pr = hasGh ? spawnSync('gh', ['pr', 'view', '--json', 'number,url'], { cwd: repo, encoding: 'utf8' }) : null;
-if (!pr || pr.status !== 0) {
-  console.log(dim('  No open pull request for this branch yet. Raise one, then push again to attach the record.'));
+if (!hasGh) {
+  console.log(dim('  The record is built, but posting it to a pull request needs the GitHub CLI,'));
+  console.log(dim('  and `gh` is not on PATH. Install it from cli.github.com, then `gh auth login`.'));
+  console.log(dim('  `nearly doctor` checks the whole chain.'));
+  console.log('');
+  process.exit(0);
+}
+const pr = spawnSync('gh', ['pr', 'view', '--json', 'number,url'], { cwd: repo, encoding: 'utf8' });
+if (pr.status !== 0) {
+  const why = /not logged|authentication|gh auth/i.test(pr.stderr || '')
+    ? 'gh is installed but not signed in. Run `gh auth login`, then push again.'
+    : 'No open pull request for this branch yet. Raise one, then push again to attach the record.';
+  console.log(dim(`  ${why}`));
   console.log('');
   process.exit(0);
 }

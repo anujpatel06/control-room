@@ -8,6 +8,7 @@
 //   nearly record       build the record for the current branch
 //   nearly post         put that record on the pull request
 //   nearly agents       which agents this repo is gated for
+//   nearly doctor       why nothing is showing up
 //   nearly voices       list the narration voices you have
 //   nearly server       run the server in the foreground (it self-starts otherwise)
 //   nearly hook <ev>    internal: what the Claude Code hooks call
@@ -78,6 +79,9 @@ switch (cmd) {
   case 'agents':
     return run(s('agents.mjs'), rest);
 
+  case 'doctor': case 'why':
+    return run(s('doctor.mjs'), rest);
+
   case 'voices':
     return run(s('build-recap.mjs'), ['--voices']);
 
@@ -106,6 +110,7 @@ switch (cmd) {
   nearly record       build the record for the current branch
   nearly post         put that record on the pull request
   nearly agents       which agents this repo is gated for
+  nearly doctor       why nothing is showing up
   nearly voices       list the narration voices you have
   nearly server       run the server in the foreground
 `);

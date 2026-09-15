@@ -22,7 +22,11 @@ Watch the first thirty seconds. The cover says what the diff cannot: an action t
 
 ## What it needs
 
-Node 18 or newer, git, and one of the seven coding agents below signed in. No dependencies and no API key of its own: agents run on whatever subscription you already have.
+Node 18 or newer, git, and one of the seven coding agents below signed in.
+Posting the record to a pull request also needs the [GitHub CLI](https://cli.github.com)
+signed in (`gh auth login`); everything else works without it. If nothing is
+showing up, `nearly doctor` walks the whole chain — gate, recording, record,
+pull request, link — and names what is in the way. No dependencies and no API key of its own: agents run on whatever subscription you already have.
 
 ### Platforms
 
