@@ -34,8 +34,13 @@ const flag = (name, dflt) => {
 };
 const wantLLM = flag('--llm', false);
 const noAudio = flag('--no-audio', false);
-const VOICE = flag('--voice', process.env.RECAP_VOICE || 'Samantha');
-const RATE = Number(flag('--rate', process.env.RECAP_RATE || 190));
+const VOICE_ARG = flag('--voice', process.env.RECAP_VOICE || null);
+const RATE = Number(flag('--rate', process.env.RECAP_RATE || 176));
+const LIST_VOICES = flag('--voices', false);
+// Read it yourself. Synthesis is a stand-in; a person reading their own words is
+// the thing it stands in for, and it costs nothing but ten minutes.
+const VOICE_DIR = flag('--voice-dir', process.env.RECAP_VOICE_DIR || null);
+const WRITE_SCRIPT = flag('--script', false);
 const AVATAR = flag('--avatar', process.env.RECAP_AVATAR || 'AP');
 const AUTHOR = flag('--author', process.env.RECAP_AUTHOR || 'Anuj');
 // Who is this recap for? A reviewer opening someone else's pull request was not
@@ -404,15 +409,102 @@ function factsFor(s) {
 
 // ---------------------------------------------------------------------------
 // audio: macOS say -> aac, embedded as data URIs
+//
+// macOS ships three tiers of the same voice. The compact one is installed by
+// default and is the robot everyone recognises; Enhanced and Premium are free
+// downloads and sound dramatically better. Pick the best tier present, and say
+// so when only the compact one is, because otherwise the page quietly ships the
+// worst voice on the machine and nobody knows a better one was a click away.
 // ---------------------------------------------------------------------------
+const VOICE_PREFERENCE = ['Ava', 'Zoe', 'Evan', 'Joelle', 'Nathan', 'Samantha', 'Allison', 'Tom', 'Alex', 'Daniel'];
+
+function installedVoices() {
+  const out = spawnSync('say', ['-v', '?'], { encoding: 'utf8' }).stdout || '';
+  return out.split('\n').filter(Boolean).map((line) => {
+    const m = line.match(/^(.+?)\s{2,}([a-z]{2}_[A-Z]{2})/);
+    if (!m) return null;
+    const name = m[1].trim();
+    const tier = /\(Premium\)/.test(name) ? 'Premium' : /\(Enhanced\)/.test(name) ? 'Enhanced' : 'Compact';
+    return { name, locale: m[2], tier, base: name.replace(/\s*\((Premium|Enhanced)\)\s*$/, '').replace(/\s*\(English \(.*\)\)$/, '') };
+  }).filter(Boolean);
+}
+
+function pickVoice(requested) {
+  const all = installedVoices();
+  if (requested) {
+    const exact = all.find((v) => v.name === requested);
+    if (exact) return exact;
+    // A bare name given for a voice whose better tier exists: upgrade it.
+    const better = all.filter((v) => v.base === requested).sort(byTier)[0];
+    if (better) return better;
+    return { name: requested, tier: 'Compact', locale: '', base: requested };
+  }
+  const english = all.filter((v) => /^en_/.test(v.locale));
+  const ranked = english
+    .filter((v) => VOICE_PREFERENCE.includes(v.base))
+    .sort((a, b) => byTier(a, b) || VOICE_PREFERENCE.indexOf(a.base) - VOICE_PREFERENCE.indexOf(b.base));
+  return ranked[0] || { name: 'Samantha', tier: 'Compact', locale: 'en_US', base: 'Samantha' };
+}
+const TIER_RANK = { Premium: 0, Enhanced: 1, Compact: 2 };
+const byTier = (a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier];
+
+if (LIST_VOICES) {
+  const all = installedVoices().filter((v) => /^en_/.test(v.locale));
+  const by = { Premium: [], Enhanced: [], Compact: [] };
+  for (const v of all) by[v.tier].push(v.name);
+  for (const t of ['Premium', 'Enhanced', 'Compact']) {
+    console.log(`${t} (${by[t].length})`);
+    console.log(by[t].length ? '  ' + by[t].join(', ') : '  none installed');
+  }
+  console.log('');
+  console.log('Enhanced and Premium are free downloads:');
+  console.log('  System Settings → Accessibility → Spoken Content → System Voice → Manage Voices');
+  console.log('Then: node scripts/build-recap.mjs latest --voice "Ava (Premium)"');
+  process.exit(0);
+}
+
+const PICKED = pickVoice(VOICE_ARG);
+const VOICE = PICKED.name;
+
+// A line you recorded, if there is one. Numbered from 1 so the folder matches
+// the script sheet you read from.
+function recordedLine(dir, i) {
+  if (!dir) return null;
+  const n = String(i + 1).padStart(2, '0');
+  for (const ext of ['m4a', 'wav', 'aiff', 'mp3', 'caf', 'aac']) {
+    for (const stem of [n, String(i + 1)]) {
+      const f = join(resolve(dir), `${stem}.${ext}`);
+      if (existsSync(f)) return f;
+    }
+  }
+  return null;
+}
+
 function narrate(sb) {
   const tmp = join(tmpdir(), `recap-${sb.id.slice(0, 8)}`);
   mkdirSync(tmp, { recursive: true });
-  let ok = 0;
+  let ok = 0, read = 0;
   sb.scenes.forEach((s, i) => {
     const aiff = join(tmp, `s${i}.aiff`);
     const m4a = join(tmp, `s${i}.m4a`);
-    const a = spawnSync('say', ['-v', VOICE, '-r', String(RATE), '-o', aiff, s.narration], { encoding: 'utf8' });
+
+    const mine = recordedLine(VOICE_DIR, i);
+    if (mine) {
+      const c = spawnSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '48000', mine, m4a], { encoding: 'utf8' });
+      if (c.status === 0) {
+        const info = spawnSync('afinfo', [m4a], { encoding: 'utf8' }).stdout || '';
+        s.audio = `data:audio/mp4;base64,${readFileSync(m4a).toString('base64')}`;
+        s.audioS = Number((info.match(/estimated duration:\s*([\d.]+)/) || [])[1]) || null;
+        s.voiced = 'you';
+        ok += 1; read += 1;
+        return;
+      }
+      console.warn(`  could not convert ${mine}: ${short(c.stderr, 120)}`);
+    }
+    // A short pause after the opening sentence keeps it from sounding like a
+    // list being read out. `say` takes [[slnc ms]] inline.
+    const spoken = s.narration.replace(/\.\s+(?=[A-Z])/, '. [[slnc 260]] ');
+    const a = spawnSync('say', ['-v', VOICE, '-r', String(RATE), '-o', aiff, spoken], { encoding: 'utf8' });
     if (a.status !== 0) { console.warn(`  say failed on scene ${i}: ${short(a.stderr, 120)}`); return; }
     const b = spawnSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '32000', aiff, m4a], { encoding: 'utf8' });
     if (b.status !== 0) { console.warn(`  afconvert failed on scene ${i}: ${short(b.stderr, 120)}`); return; }
@@ -423,7 +515,40 @@ function narrate(sb) {
     ok += 1;
   });
   rmSync(tmp, { recursive: true, force: true });
+  sb.readAloud = read;
   return ok;
+}
+
+// The sheet you read from. One numbered line per scene, with the target length,
+// so the recordings land close to the timings the page already computed.
+function writeScript(sb, slug) {
+  const lines = [
+    `# ${slug} — narration script`,
+    '',
+    `${sb.scenes.length} lines. Record each one as its own file in a folder, named 01, 02, 03 and so on.`,
+    'Any of m4a, wav, aiff, mp3 or caf. Voice Memos or QuickTime is fine; one take per line.',
+    '',
+    'Then build with:',
+    '',
+    '```bash',
+    `node scripts/build-recap.mjs --branch ${sb.branch ?? '<branch>'} --repo <repo> --voice-dir <folder>`,
+    '```',
+    '',
+    'Any line you have not recorded falls back to the system voice, so you can do them a few at a time.',
+    '',
+    '---',
+    '',
+  ];
+  sb.scenes.forEach((s, i) => {
+    const words = s.narration.split(/\s+/).length;
+    lines.push(`### ${String(i + 1).padStart(2, '0')} · ${s.kind} · about ${Math.round(words / 2.6)}s`);
+    lines.push('');
+    lines.push(s.narration);
+    lines.push('');
+  });
+  const p = join(root, 'recaps', `${slug}-script.md`);
+  writeFileSync(p, lines.join('\n'));
+  return p;
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +571,15 @@ for (const s of sb.scenes) {
 }
 if (!noAudio) {
   const n = narrate(sb);
-  console.log(`narration: ${n}/${sb.scenes.length} scenes voiced by ${VOICE}`);
+  const spoken = sb.scenes.length - (sb.readAloud || 0);
+  console.log(sb.readAloud
+    ? `narration: ${sb.readAloud} read by you, ${spoken} by ${VOICE} (${PICKED.tier})`
+    : `narration: ${n}/${sb.scenes.length} scenes voiced by ${VOICE} (${PICKED.tier})`);
+  if (PICKED.tier === 'Compact' && spoken > 0) {
+    console.log('  This is the compact voice, the lowest quality macOS ships.');
+    console.log('  Free upgrade: System Settings → Accessibility → Spoken Content → System Voice → Manage Voices');
+    console.log('  Then re-run. See every option with: node scripts/build-recap.mjs --voices');
+  }
   for (const s of sb.scenes) if (s.audioS) s.durS = s.audioS + 0.8;
 }
 sb.totalS = sb.scenes.reduce((n, s) => n + s.durS, 0);
@@ -464,6 +597,8 @@ const html = readFileSync(templatePath, 'utf8')
   .replaceAll('__DESC__', `Recap of a Control Room session: ${sb.scenes[0].narration}`);
 const outPath = join(outDir, `${slug}.html`);
 writeFileSync(outPath, html);
+
+if (WRITE_SCRIPT) console.log(`Script sheet: ${writeScript(sb, slug).replace(root + '/', '')}`);
 
 console.log(`Built ui/recaps/${slug}.html — ${BRANCH ? `branch "${BRANCH}", ${sb.runs} session(s), ` : ''}${sb.scenes.length} scenes, ${sb.totalS.toFixed(0)}s, ${Math.round(html.length / 1024)} KB`);
 for (const s of sb.scenes) console.log(`  ${s.kind.padEnd(9)} ${s.durS.toFixed(1)}s  ${short(s.narration, 90)}`);

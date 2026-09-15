@@ -15,7 +15,7 @@
   "audience": "reviewer",
   "supervisor": "Anuj",
   "voice": "Samantha",
-  "generatedAt": "2026-09-15T14:38:36.248Z",
+  "generatedAt": "2026-09-15T14:44:42.403Z",
   "scenes": [
     {
       "kind": "cover",
@@ -57,8 +57,8 @@
         ]
       ],
       "narration": "2 agent sessions on this branch, 73 seconds in total under Anuj's supervision. 9 tool calls, 7 held for a decision, 3 refused.",
-      "durS": 9.428526000000002,
-      "audioS": 8.628526
+      "durS": 10.111111000000001,
+      "audioS": 9.311111
     },
     {
       "kind": "intent",
@@ -66,8 +66,8 @@
       "ordinal": 1,
       "of": 2,
       "narration": "Instruction 1 of 2, word for word: In this repo: 1) read tasks.js, 2) use the Edit tool to add a third task { id: 3, title: 'Write the essay', done: false } to defa…",
-      "durS": 12.930476,
-      "audioS": 12.130476
+      "durS": 13.869796000000001,
+      "audioS": 13.069796
     },
     {
       "kind": "quiet",
@@ -78,8 +78,8 @@
         }
       ],
       "narration": "1 read-only step ran without asking: Read. Logged, not gated.",
-      "durS": 4.820635,
-      "audioS": 4.020635
+      "durS": 5.364807,
+      "audioS": 4.564807
     },
     {
       "kind": "decision",
@@ -95,8 +95,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to edit tasks.js. Anuj allowed it after 2.6 seconds.",
-      "durS": 5.047347,
-      "audioS": 4.247347
+      "durS": 5.603492,
+      "audioS": 4.803492
     },
     {
       "kind": "decision",
@@ -112,8 +112,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: node -e \"import('./tasks.js').then(m=>console.log(m.countOpen(m.defau…. Anuj said no after 2.9 seconds. The agent saw the refusal as an error and carried on without it.",
-      "durS": 14.103129000000001,
-      "audioS": 13.303129
+      "durS": 15.379093000000001,
+      "audioS": 14.579093
     },
     {
       "kind": "decision",
@@ -129,8 +129,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: git status. Anuj allowed it after 2.5 seconds.",
-      "durS": 5.627846,
-      "audioS": 4.827846
+      "durS": 6.2420409999999995,
+      "audioS": 5.442041
     },
     {
       "kind": "decision",
@@ -146,8 +146,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: git add tasks.js && git commit -m \"$(cat <<'EOF' Add third task to de…. Anuj allowed it after 2.9 seconds.",
-      "durS": 10.167347000000001,
-      "audioS": 9.367347
+      "durS": 11.129841,
+      "audioS": 10.329841
     },
     {
       "kind": "decision",
@@ -163,8 +163,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It tried to run a command: git push origin HEAD. A never rule blocked it before anyone saw it.",
-      "durS": 5.755646,
-      "audioS": 4.955646
+      "durS": 6.369615,
+      "audioS": 5.569615
     },
     {
       "kind": "diff",
@@ -184,8 +184,8 @@
         "total": 9
       },
       "narration": "That round of work changed 1 file: 1 line added, 0 removed.",
-      "durS": 4.782132,
-      "audioS": 3.982132
+      "durS": 5.094059,
+      "audioS": 4.294059
     },
     {
       "kind": "intent",
@@ -193,8 +193,8 @@
       "ordinal": 2,
       "of": 2,
       "narration": "Instruction 2 of 2, word for word: In this repo, use the Edit tool to add a fourth task { id: 4, title: 'Run the study', done: true } to defaultTasks in tasks.js. T…",
-      "durS": 12.628617,
-      "audioS": 11.828617
+      "durS": 13.788526000000001,
+      "audioS": 12.988526
     },
     {
       "kind": "decision",
@@ -210,8 +210,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: grep -n \"defaultTasks\" -A 10 tasks.js. Anuj allowed it after 3.4 seconds.",
-      "durS": 7.392562,
-      "audioS": 6.592562
+      "durS": 8.134467,
+      "audioS": 7.334467
     },
     {
       "kind": "decision",
@@ -227,8 +227,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to edit tasks.js. Anuj allowed it after 2.3 seconds.",
-      "durS": 5.047347,
-      "audioS": 4.247347
+      "durS": 5.603492,
+      "audioS": 4.803492
     },
     {
       "kind": "decision",
@@ -244,8 +244,8 @@
       "resultPreview": null,
       "resultError": false,
       "narration": "It asked to run a command: rm README.md. Anuj said no after 1.5 seconds. The agent saw the refusal as an error and carried on without it.",
-      "durS": 8.867029,
-      "audioS": 8.067029
+      "durS": 9.875964000000002,
+      "audioS": 9.075964
     },
     {
       "kind": "diff",
@@ -265,8 +265,8 @@
         "total": 9
       },
       "narration": "That round of work changed 1 file: 1 line added, 0 removed.",
-      "durS": 4.782132,
-      "audioS": 3.982132
+      "durS": 5.094059,
+      "audioS": 4.294059
     },
     {
       "kind": "outcome",
@@ -291,16 +291,17 @@
       ],
       "head": null,
       "narration": "The agent reported: The README.md removal was denied, so I stopped there. I added the fourth task `{ id: 4, title: 'Run the study', done: true }` to `defaultTasks` in ta… Read that with a caveat: 3 requested steps never ran. 2 were refused by Anuj, and 1 was blocked by policy before anyone saw it.",
-      "durS": 19.666259,
-      "audioS": 18.866259
+      "durS": 21.371293,
+      "audioS": 20.571293
     },
     {
       "kind": "credits",
       "narration": "That is the whole story, including the parts the diff cannot show you. Every number came from the recording, not from a model.",
-      "durS": 6.929796,
-      "audioS": 6.129796
+      "durS": 7.636463,
+      "audioS": 6.836463
     }
   ],
   "kind": "branch",
-  "totalS": 137.97682600000005
+  "readAloud": 0,
+  "totalS": 150.668119
 }

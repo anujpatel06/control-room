@@ -92,6 +92,31 @@ node scripts/build-recap.mjs latest --no-audio --voice Daniel --avatar AP
 
 Writes one self-contained file to `ui/recaps/<agent>-<id>.html` (served at `/recaps/…` by the server, and there is a **Recap** button on each session card). The page plays 8 to 12 scenes with captions and narration: the task verbatim, every ask card with the answer you gave and how long you took, each turn's diff, anything you undid (recovered from the worktree reflog, so the story stays honest), and intent versus outcome.
 
+### The voice
+
+macOS ships three tiers of every voice. The **compact** one is installed by default and is the robot everyone recognises. **Enhanced** and **Premium** are free downloads and sound dramatically better:
+
+```
+System Settings → Accessibility → Spoken Content → System Voice → Manage Voices
+```
+
+The builder picks the best tier it finds and tells you when all it has is compact. See what you have:
+
+```bash
+node scripts/build-recap.mjs --voices
+node scripts/build-recap.mjs latest --voice "Ava (Premium)"
+```
+
+**Better still, read it yourself.** Synthesis is a stand-in for a person reading their own words, and for the one record you put in front of people it is worth ten minutes:
+
+```bash
+node scripts/build-recap.mjs latest --script          # writes recaps/<slug>-script.md
+# record each numbered line into a folder as 01.m4a, 02.m4a, …
+node scripts/build-recap.mjs latest --voice-dir ~/Desktop/narration
+```
+
+Lines you have not recorded fall back to the system voice, so you can do them a few at a time.
+
 Rules the builder follows:
 
 - Every number, diff and decision is computed from `recordings/<session>.jsonl` and the worktree's git history. With `--llm`, Claude only rewrites the narration sentences; it cannot add or change a fact, and the page says which mode produced it.
