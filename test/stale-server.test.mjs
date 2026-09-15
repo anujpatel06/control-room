@@ -22,6 +22,15 @@ import { tmpdir } from 'node:os';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 49200 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
+
+// Windows keeps a directory busy until every handle inside it is closed, and
+// kill() returns long before the process has gone. Wait for the exit, then let
+// rmSync retry: without both, cleanup fails on timing alone.
+const gone = (p) => (p && p.exitCode === null && !p.killed
+  ? new Promise((r) => { p.once('exit', r); p.kill('SIGTERM'); setTimeout(r, 3000); })
+  : Promise.resolve());
+const scrub = (d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+
 let impostorRoot, impostor, recordings;
 
 const health = async () => {
@@ -55,11 +64,11 @@ before(async () => {
 });
 
 after(async () => {
-  impostor?.kill('SIGTERM');
   // The launcher starts its replacement detached, so it outlives this file
   // unless it is asked to go — which is the whole subject of these tests.
   try { await fetch(`${BASE}/exit`, { method: 'POST', signal: AbortSignal.timeout(2000) }); } catch { /* already gone */ }
-  for (const d of [impostorRoot, recordings]) rmSync(d, { recursive: true, force: true });
+  await gone(impostor);
+  for (const d of [impostorRoot, recordings]) scrub(d);
 });
 
 const fire = (event, payload) => new Promise((resolve) => {
@@ -160,6 +169,6 @@ test('an older server that cannot be asked to stop is explained, not ignored', a
       'it must say how to end it, on this platform');
   } finally {
     await new Promise((r) => old.close(r));
-    rmSync(repo, { recursive: true, force: true });
+    scrub(repo);
   }
 });

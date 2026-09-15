@@ -26,6 +26,15 @@ import { tmpdir } from 'node:os';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 47800 + Math.floor(Math.random() * 90);
 const HOOK = join(root, 'scripts', 'hook.mjs');
+
+// Windows keeps a directory busy until every handle inside it is closed, and
+// kill() returns long before the process has gone. Wait for the exit, then let
+// rmSync retry: without both, cleanup fails on timing alone.
+const gone = (p) => (p && p.exitCode === null && !p.killed
+  ? new Promise((r) => { p.once('exit', r); p.kill('SIGTERM'); setTimeout(r, 3000); })
+  : Promise.resolve());
+const scrub = (d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+
 let server, recordings;
 
 before(async () => {
@@ -41,9 +50,9 @@ before(async () => {
   throw new Error('server did not start');
 });
 
-after(() => {
-  server?.kill('SIGTERM');
-  rmSync(recordings, { recursive: true, force: true });
+after(async () => {
+  await gone(server);
+  scrub(recordings);
 });
 
 // Run the launcher the way the harness's own config file runs it.

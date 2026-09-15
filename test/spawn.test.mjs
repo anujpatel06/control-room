@@ -21,6 +21,15 @@ import { tmpdir } from 'node:os';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 49000 + Math.floor(Math.random() * 90);   // clear of resilience.test.mjs, which roams 48000-48899
 const BASE = `http://127.0.0.1:${PORT}`;
+
+// Windows keeps a directory busy until every handle inside it is closed, and
+// kill() returns long before the process has gone. Wait for the exit, then let
+// rmSync retry: without both, cleanup fails on timing alone.
+const gone = (p) => (p && p.exitCode === null && !p.killed
+  ? new Promise((r) => { p.once('exit', r); p.kill('SIGTERM'); setTimeout(r, 3000); })
+  : Promise.resolve());
+const scrub = (d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+
 let server, recordings, workspace;
 
 const post = (p, body) => fetch(BASE + p, {
@@ -59,9 +68,9 @@ before(async () => {
   throw new Error('server did not start');
 });
 
-after(() => {
-  server?.kill('SIGTERM');
-  for (const d of [recordings, workspace]) rmSync(d, { recursive: true, force: true });
+after(async () => {
+  await gone(server);
+  for (const d of [recordings, workspace]) scrub(d);
 });
 
 test('with nothing attached, it says what to do instead of failing at git', async () => {
