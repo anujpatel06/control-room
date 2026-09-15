@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -272,4 +272,34 @@ test('an upgrade cannot destroy what was recorded', async () => {
 
   // Whichever it is, no path may sit inside node_modules.
   assert.doesNotMatch(got.rec, /node_modules/);
+});
+
+test('a hook is never written to call a command that will not exist', async () => {
+  // npx puts its own bin first on PATH for the life of the process. Trusting it
+  // meant writing `nearly hook ...` into a repo during an npx run, and that
+  // command ceased to exist the moment npx exited: every tool call then failed
+  // its hook, which means no gate at all, reported as success.
+  const repo = tempRepo();
+  const fakeNpx = mkdtempSync(join(tmpdir(), 'cr-_npx-'));
+  const npxBin = join(fakeNpx, '_npx', 'abc123');
+  mkdirSync(npxBin, { recursive: true });
+  writeFileSync(join(npxBin, 'nearly'), '#!/bin/sh\necho "/pretend/pkg"\n');
+  spawnSync('chmod', ['+x', join(npxBin, 'nearly')]);
+
+  try {
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], {
+      encoding: 'utf8',
+      // The disappearing shim first, exactly as npx arranges it.
+      env: { ...process.env, PATH: `${npxBin}:${process.env.PATH}`, NEARLY_NO_INSTALL: '1' },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const cmd = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'))
+      .hooks.PreToolUse[0].hooks[0].command;
+    assert.notEqual(cmd, 'nearly hook pre-tool ' + cmd.split(' ').pop(),
+      'must not trust a command that lives in the npx cache');
+    assert.doesNotMatch(cmd, /^nearly hook/, `wrote a command that will vanish: ${cmd}`);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(fakeNpx, { recursive: true, force: true });
+  }
 });

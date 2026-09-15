@@ -16,7 +16,7 @@
 // it, and if it cannot start, Claude Code falls back to its own prompts and
 // nothing breaks.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -40,15 +40,31 @@ function pkgVersion() {
   catch { return 'latest'; }
 }
 
-// Only trust a `nearly` on PATH if it really is this tool.
+// Only trust a `nearly` on PATH if it really is this tool and it will still be
+// there tomorrow.
+//
+// npx puts its own temporary bin first on PATH for the life of the process, so
+// during `npx nearly-cli` a naive lookup finds a `nearly` that ceases to exist
+// the moment npx exits. Believing it meant writing hooks that call a command
+// nobody has, which fail on every tool call, which means no gate at all.
 function onPath() {
+  const args = process.platform === 'win32' ? ['nearly'] : ['-a', 'nearly'];
+  let found = [];
   try {
-    const p = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['nearly'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n')[0];
-    if (!p) return null;
-    const out = execFileSync(p, ['--which'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    return out ? p : null;
+    found = execFileSync(process.platform === 'win32' ? 'where' : 'which', args,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n').filter(Boolean);
   } catch { return null; }
+
+  for (const p of found) {
+    let resolved = p;
+    try { resolved = realpathSync(p); } catch { /* keep the literal path */ }
+    if (/[\\/]_npx[\\/]/.test(p) || /[\\/]_npx[\\/]/.test(resolved)) continue;  // vanishes when npx exits
+    try {
+      const out = execFileSync(p, ['--which'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      if (out) return p;
+    } catch { /* not our command; try the next one */ }
+  }
+  return null;
 }
 
 const fromPackage = /[\\/]node_modules[\\/]/.test(root) || /[\\/]_npx[\\/]/.test(root);
@@ -72,7 +88,7 @@ function installGlobally() {
 }
 let installed = onPath();
 const hookCmd = (ev) => installed
-  ? `nearly hook ${ev}`
+  ? `nearly hook ${ev}`   // verified above to survive this process
   : fromPackage
     ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
     : `node ${JSON.stringify(HOOK)} ${ev}`;
