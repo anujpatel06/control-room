@@ -51,8 +51,17 @@ if (existsSync(hookPath)) {
 mkdirSync(hooksDir, { recursive: true });
 writeFileSync(hookPath, `#!/bin/sh
 # control-room: hand the session record over at push time.
-# Never blocks the push; "|| true" is the whole safety story.
-node "${join(root, 'scripts', 'push-record.mjs')}" "${repo}" </dev/tty >/dev/tty 2>&1 || true
+# Never blocks the push; "exit 0" at the end is the whole safety story.
+#
+# git gives a hook no terminal of its own, so borrow the user's when there is
+# one. Scripted and CI pushes have no /dev/tty: run anyway, print nothing to
+# ask, and post nothing.
+CR="${join(root, 'scripts', 'push-record.mjs')}"
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  node "$CR" "${repo}" </dev/tty >/dev/tty 2>&1 || true
+else
+  CONTROL_ROOM_NO_TTY=1 node "$CR" "${repo}" || true
+fi
 exit 0
 `);
 chmodSync(hookPath, 0o755);

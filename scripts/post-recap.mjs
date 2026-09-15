@@ -67,18 +67,49 @@ lines.push('');
 lines.push('</details>');
 lines.push('');
 lines.push(`<sub>Every number above was computed from the session recording. ${sb.polished ? 'Sentences were rewritten by a model; facts were not.' : 'No model wrote any of it.'}</sub>`);
-const body = lines.join('\n');
+// A hidden marker so we can find our own comment again on the next push and
+// edit it, instead of stacking a new one on every push until nobody reads any.
+const MARKER = '<!-- control-room:session-record -->';
+const body = `${MARKER}\n${lines.join('\n')}`;
 
 if (dry) { console.log(body); process.exit(0); }
 
 const cwd = sb.cwd;
 if (!cwd) { console.error('storyboard has no repo path; cannot find the pull request'); process.exit(1); }
-const tmp = join(tmpdir(), `recap-comment-${slug}.md`);
-writeFileSync(tmp, body);
-const r = spawnSync('gh', ['pr', 'comment', '--body-file', tmp], { cwd, encoding: 'utf8' });
-if (r.status !== 0) {
-  console.error(`gh pr comment failed in ${cwd}: ${(r.stderr || r.stdout).trim()}`);
-  console.error('Is there an open pull request for this branch, and is gh logged in?');
+
+const gh = (args, opts = {}) => spawnSync('gh', args, { cwd, encoding: 'utf8', ...opts });
+
+// Which pull request, and in which repository
+const view = gh(['pr', 'view', '--json', 'number,url']);
+if (view.status !== 0) {
+  console.error(`no open pull request for this branch in ${cwd}`);
+  console.error((view.stderr || view.stdout || '').trim().split('\n')[0]);
   process.exit(1);
 }
-console.log((r.stdout || '').trim() || 'posted');
+const { number, url: prUrl } = JSON.parse(view.stdout);
+const repoView = gh(['repo', 'view', '--json', 'nameWithOwner']);
+const nwo = JSON.parse(repoView.stdout || '{}').nameWithOwner;
+if (!nwo) { console.error('could not identify the repository'); process.exit(1); }
+
+const tmp = join(tmpdir(), `recap-comment-${slug}.md`);
+writeFileSync(tmp, body);
+
+// Already posted one? Edit it. A branch gets pushed many times, and the reviewer
+// should see the current state, not a stack of stale records.
+const mine = gh(['api', `repos/${nwo}/issues/${number}/comments`, '--paginate',
+                 '--jq', `[.[] | select(.body | contains("${MARKER}")) | .id] | first`]);
+const existing = (mine.stdout || '').trim();
+
+let r;
+if (existing && existing !== 'null') {
+  r = gh(['api', '-X', 'PATCH', `repos/${nwo}/issues/comments/${existing}`,
+          '-F', `body=@${tmp}`, '--jq', '.html_url']);
+  if (r.status === 0) console.log(`updated ${(r.stdout || '').trim() || prUrl}`);
+} else {
+  r = gh(['pr', 'comment', String(number), '--body-file', tmp]);
+  if (r.status === 0) console.log(`posted ${(r.stdout || '').trim() || prUrl}`);
+}
+if (r.status !== 0) {
+  console.error(`could not ${existing && existing !== 'null' ? 'update' : 'post'} the comment: ${(r.stderr || r.stdout).trim()}`);
+  process.exit(1);
+}

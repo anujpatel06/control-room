@@ -82,6 +82,13 @@ if (!pr || pr.status !== 0) {
 }
 const prUrl = (() => { try { return JSON.parse(pr.stdout).url; } catch { return null; } })();
 
+if (process.env.CONTROL_ROOM_NO_TTY === '1' || !process.stdin.isTTY) {
+  console.log(dim('  No terminal to ask on, so nothing was posted.'));
+  console.log(dim(`  Post it yourself: node scripts/post-recap.mjs ${slug}${URL_BASE ? ` --url-base ${URL_BASE}` : ''}`));
+  console.log('');
+  process.exit(0);
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const answer = await new Promise((r) => rl.question(`  Post this record to ${prUrl || 'the pull request'}? [y/N] `, r))
   .finally(() => rl.close());
