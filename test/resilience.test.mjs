@@ -237,3 +237,14 @@ test('a failed update says so rather than leaving you to assume', async () => {
   assert.match(r.stdout, /npm install -g/, 'and tells you how to do it yourself');
   rmSync(fakeBin, { recursive: true, force: true });
 });
+
+test('an active user actually meets the updater', () => {
+  // Turning it on for a repo happens once, and hooks are excluded by design, so
+  // if the push path did not carry the check a working user would never hear
+  // about a fix no matter how many they were behind.
+  const push = readFileSync(join(root, 'scripts', 'push-record.mjs'), 'utf8');
+  assert.match(push, /update-check/, 'the push path is where a working user is reachable');
+
+  // And it still must not be able to fail a push.
+  assert.match(push, /catch \{[^}]*never worth failing a push/i);
+});

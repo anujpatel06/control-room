@@ -79,6 +79,16 @@ console.log('');
 console.log(dim(`  ${URL_BASE ? `${URL_BASE}/${slug}.html` : `ui/records/${slug}.html (set NEARLY_URL_BASE to publish it)`}`));
 console.log('');
 
+// A push is the right moment to update: it happens often for anyone actually
+// using this, the person is present and waiting, and it is nowhere near the path
+// an agent's tool call travels. Turning it on for a repo happens once, and the
+// hooks are excluded on purpose, so without this an active user would never
+// hear about a fix.
+try {
+  const { checkForUpdate, applyUpdate } = await import('./update-check.mjs');
+  applyUpdate(await checkForUpdate());
+} catch { /* never worth failing a push over */ }
+
 // gh is only useful if there is a pull request to comment on
 const hasGh = spawnSync('gh', ['--version'], { encoding: 'utf8' }).status === 0;
 const pr = hasGh ? spawnSync('gh', ['pr', 'view', '--json', 'number,url'], { cwd: repo, encoding: 'utf8' }) : null;
