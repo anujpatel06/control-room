@@ -24,7 +24,27 @@ Watch the first thirty seconds. The cover says what the diff cannot: an action t
 
 Node 18 or newer, Claude Code signed in, and git. No dependencies and no API key: agents run on your existing Claude subscription.
 
-Gating, recording and the record itself work on macOS, Linux and Windows. **Spoken narration is macOS only**, because it uses the built-in `say`. Elsewhere the record is built the same way and reads from its captions, or you can supply your own recordings with `--voice-dir`.
+### Platforms
+
+The suite runs on every push against macOS, Linux and Windows, on Node 18 and 22.
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Gate, recording, records | tested in CI | tested in CI | tested in CI |
+| Turning it on and off | tested in CI | tested in CI | tested in CI |
+| Updating itself | tested in CI | tested in CI | tested in CI |
+| Driving a real agent end to end | **run by hand** | not yet | not yet |
+| Handing the record over at `git push` | **run by hand** | not yet | not yet |
+| Spoken narration | yes | no | no |
+
+Narration uses the built-in `say`, so it is macOS only. Everywhere else the
+record is built identically and reads from its captions, or you can record the
+lines yourself with `--voice-dir`.
+
+The bottom two rows are the honest gap: CI proves the pieces work on all three,
+but a whole session with a real agent, and a real push through the hook, have
+only been done on macOS. If you are the first to try either on Windows or Linux,
+an issue with what broke would be genuinely useful.
 
 ## Use it on your own repo
 
