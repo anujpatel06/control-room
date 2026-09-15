@@ -61,6 +61,50 @@ const gated = ADAPTERS.filter((a) => {
 if (gated.length) say(true, 'agents gated here', gated.map((a) => a.name).join(', '));
 else say(false, 'agents gated here', 'none', 'run `nearly` in this repo to turn it on');
 
+// Configured is not the same as working, and the difference is invisible.
+// Hooks fail open on purpose — a broken one must never wedge an agent — so a
+// command that cannot be found produces silence, and silence looks exactly like
+// a session nobody ran. Everything above can be green while nothing is gated.
+//
+// So run the hook this repo actually has, the way the agent runs it, and see
+// whether an answer comes back.
+if (gated.length) {
+  const cc = gated.find((a) => a.id === 'claude-code') || gated[0];
+  let cmd = null;
+  try {
+    const cfg = JSON.parse(readFileSync(join(repo, cc.config), 'utf8'));
+    const walk = (o) => {
+      if (!o || typeof o !== 'object') return;
+      if (typeof o.command === 'string' && /nearly/i.test(o.command) && /pre-tool/.test(o.command)) cmd = o.command;
+      for (const v of Object.values(o)) walk(v);
+    };
+    walk(cfg);
+  } catch { /* unreadable config */ }
+
+  if (!cmd) {
+    say(null, 'hooks actually fire', 'could not find the pre-tool hook to try');
+  } else {
+    const probe = JSON.stringify({
+      session_id: `nearly-doctor-${Date.now()}`, cwd: repo,
+      hook_event_name: 'PreToolUse', tool_name: 'Read',
+      tool_input: { file_path: join(repo, 'nearly-doctor-probe') }, tool_use_id: 'doctor',
+    });
+    // shell: true because the agent runs these through a shell, and on Windows
+    // the installed command is a .cmd that will not spawn any other way.
+    const r = spawnSync(cmd, { input: probe, shell: true, encoding: 'utf8', timeout: 30_000 });
+    const decided = /permissionDecision|"decision"|"permission"/.test(r.stdout || '');
+    if (decided) {
+      say(true, 'hooks actually fire', 'the gate answered a test call');
+    } else {
+      const why = (r.error && r.error.message)
+        || (r.stderr || '').trim().split('\n')[0]
+        || (r.status !== 0 ? `the hook command exited ${r.status}` : 'the hook ran but answered nothing');
+      say(false, 'hooks actually fire', why,
+        `the hook command in ${cc.config} does not work here, so nothing is gated and nothing is recorded — check that \`nearly\` runs in a plain shell, then re-run \`nearly\` to rewrite the hooks`);
+    }
+  }
+}
+
 // 3 — the server, and whether it is this build
 let health = null;
 try {
@@ -93,7 +137,11 @@ if (!health) {
 // them, so this cannot disagree with it.
 const recDir = paths.recordings();
 let runs = 0, otherBranches = new Set();
-const real = (p) => { try { return realpathSync(resolve(p)); } catch { return resolve(p); } };
+const real = (p) => {
+  let r;
+  try { r = realpathSync(resolve(p)); } catch { r = resolve(p); }
+  return process.platform === 'win32' ? r.toLowerCase() : r;   // same place, spelled differently
+};
 try {
   for (const f of readdirSync(recDir).filter((f) => f.endsWith('.jsonl'))) {
     let created = null;

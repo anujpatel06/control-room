@@ -98,7 +98,14 @@ function parseRecording(path) {
 // belongs to nobody.
 function samePath(a, b) {
   if (!a || !b) return false;
-  const real = (p) => { try { return realpathSync(resolve(p)); } catch { return resolve(p); } };
+  const real = (p) => {
+    let r;
+    try { r = realpathSync(resolve(p)); } catch { r = resolve(p); }
+    // Windows spells the same directory more than one way and means the same
+    // place. Comparing those as strings loses every session on that machine,
+    // the same way /var against /private/var did on this one.
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
   return real(a) === real(b);
 }
 
