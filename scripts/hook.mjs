@@ -41,6 +41,10 @@ if (!event) process.exit(0);
 
 // An unknown id is a typo in a config file, not a reason to wedge the agent.
 const adapter = flag ? byId(flag.slice('--adapter='.length)) : null;
+// Nobody is at the keyboard. Set by attach --auto, carried per repo rather than
+// as machine-wide state, because supervising one project and not another is the
+// normal case.
+const unattended = args.includes('--auto');
 
 const body = await new Promise((r) => {
   let s = '';
@@ -111,7 +115,8 @@ if (adapter && adapter.normalize) {
 
 try {
   const hold = adapter?.holdMs ? `&hold=${adapter.holdMs}` : '';
-  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}`, {
+  const auto = unattended ? '&auto=1' : '';
+  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}${auto}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: payload,

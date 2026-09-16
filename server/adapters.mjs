@@ -226,7 +226,13 @@ export const ADAPTERS = [
       cfg.hooks = stripEvents(cfg.hooks || {});
       for (const [their, ours] of Object.entries(this.events)) {
         cfg.hooks[their] = [...(cfg.hooks[their] || []),
-          { command: cmdFor(ours), timeout: holdFor(ours), failClosed: ours === 'pre-tool' }];
+          // Fail open, as every other harness does. failClosed only ever
+          // applied when the gate did not answer — a slow npx, a server that
+          // had not started — and then it denied every write in the editor.
+          // A reported Cursor session could not edit a single file. The
+          // never-rules do not depend on this: the server enforces them whenever
+          // it is reachable.
+          { command: cmdFor(ours), timeout: holdFor(ours), failClosed: false }];
       }
       writeJson(file, cfg);
       return { file };

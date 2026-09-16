@@ -106,6 +106,18 @@ const updateNote = () => installed
 
 const argv = process.argv.slice(2);
 const off = argv.includes('--off') || argv.includes('--detach');
+// Unattended unless you ask to supervise.
+//
+// Holding a call for a human only works if a human is looking at the dashboard,
+// and nothing tells a new user it exists. So the default used to be: every edit
+// silently waits two minutes and is then refused. That made a Cursor session
+// unable to write a single file, and turned a fifteen-second task into five
+// minutes under auto mode. Two real failures of the same default.
+//
+// Now the never-rules block with nobody present, everything else is done and
+// recorded, and holding for approval is something you turn on while watching.
+const supervise = argv.includes('--supervise');
+const auto = !supervise;
 const repo = resolve(argv.find((a) => !a.startsWith('--')) || process.cwd());
 const nameIdx = argv.indexOf('--name');
 const name = (nameIdx !== -1 ? argv[nameIdx + 1] : basename(repo))
@@ -143,7 +155,9 @@ if (unknown.length) {
 const wired = [];
 const notes = [];
 for (const a of chosen) {
-  const cmdFor = (ev) => `${hookCmd(ev)} ${name}` + (a.id === 'claude-code' ? '' : ` --adapter=${a.id}`);
+  const cmdFor = (ev) => `${hookCmd(ev)} ${name}`
+    + (a.id === 'claude-code' ? '' : ` --adapter=${a.id}`)
+    + (auto ? ' --auto' : '');
   try {
     const r = off ? a.uninstall({ repo }) : a.install({ repo, cmdFor, name });
     if (r?.error) { notes.push(`${a.name}: ${r.error}`); continue; }
@@ -264,6 +278,13 @@ if (off) {
 
 console.log(`${ok('✓')} ${bold('Nearly is on')} for ${bold(name)}  ${dim(repo)}`);
 console.log('');
+if (supervise) {
+  console.log(`  ${ok('·')} ${bold('supervised')} ${dim(`— risky calls wait for you at http://127.0.0.1:${PORT}`)}`);
+  console.log(`    ${dim('keep that page open, or every one of them is refused after two minutes')}`);
+} else {
+  console.log(`  ${ok('·')} ${dim('destructive commands are blocked; everything else runs and is recorded')}`);
+  console.log(`    ${dim('to approve risky calls yourself: nearly --supervise')}`);
+}
 for (const a of wired) {
   const how = a.verified ? dim(`(${a.verified})`) : dim('(built to their published hook spec, not yet run against a live agent)');
   console.log(`  ${ok('·')} ${a.name} sessions here are gated and recorded ${how}`);
@@ -311,6 +332,8 @@ if (elsewhere.length) {
 }
 
 console.log('');
-console.log(`  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`);
+console.log(supervise
+  ? `  Now just work. Requests that need you appear at ${bold(`http://127.0.0.1:${PORT}`)}`
+  : `  Now just work. Nothing will wait for you.`);
 console.log(dim('  Nothing to leave running. Turn it off again with --off.'));
 console.log('');

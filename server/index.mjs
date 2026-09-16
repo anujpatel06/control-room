@@ -427,7 +427,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (ev === 'pre-tool') {
-      const { tier, reason } = classifyWith(hook, rules);
+      // Unattended: nobody is going to answer, so holding a call for two
+      // minutes and then failing closed does not protect anything — it just
+      // stalls the run and teaches people to turn the gate off. The never-rules
+      // still bite, because those never needed a person. Everything that would
+      // have been asked is done and written down instead.
+      const unattended = url.searchParams.get('auto') === '1';
+      let { tier, reason } = classifyWith(hook, rules);
+      if (unattended && tier === 'ask') { tier = 'log'; reason = `${reason}, nobody watching`; }
       const id = hook.tool_use_id || randomUUID();
       // Policy keys on the canonical name so a rule means the same thing in every
       // harness; the record shows the harness's own name so it stays truthful
@@ -437,8 +444,11 @@ const server = http.createServer(async (req, res) => {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `nearly: ${why}` },
       });
       if (!s) return respond('deny', 'unknown session');
-      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('deny', `never (${reason})`); }
-      if (tier === 'log') { record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier }); return respond('allow', `do and log (${reason})`); }
+      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier, unattended }); return respond('deny', `never (${reason})`); }
+      if (tier === 'log') {
+        record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: unattended ? 'auto' : 'policy', tool: shown, input: hook.tool_input, tier });
+        return respond('allow', unattended ? `recorded, unattended (${reason})` : `do and log (${reason})`);
+      }
       // ask: hold the response until the UI decides, or fail closed
       // A harness may say it will not wait as long as we would. It can shorten
       // the deadline, never lengthen it: the point of the cap is that nobody

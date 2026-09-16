@@ -212,6 +212,28 @@ All of them capture the moment a human refuses something. None of them passes it
 
 **The gate here exists to produce the recording.** It is the instrument, not the product. If you already run Prempti, its audit trail is richer than ours and reading it as an input is the obvious next step; see *Roadmap*.
 
+## Unattended by default
+
+Turning Nearly on does not make your agent wait for anyone. Destructive commands
+are refused outright — `rm -rf`, `git push`, `sudo`, anything touching `.env`,
+`curl … | sh` — and everything else runs and is written down.
+
+It used to hold every edit for a person to approve, which only works if a person
+is watching the dashboard, and nothing told a new user it existed. In practice
+that meant a Cursor session unable to write a single file, each edit waiting two
+minutes and then being refused. Holding for approval is now something you turn
+on while you are actually watching:
+
+```bash
+nearly --supervise
+```
+
+This is not weaker than it sounds. The refusals that matter never needed a
+person: they are rules, and they fire with nobody at the keyboard — including
+under Claude Code's `bypassPermissions`, which skips its own prompts but not
+the hooks Nearly runs in. With no one watching, the record is also the only
+account of what the agent did, and it says so on the first line.
+
 ## The consent gradient
 
 Every tool call passes through an HTTP `PreToolUse` hook to this server, which sorts it into a tier:

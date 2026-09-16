@@ -241,13 +241,23 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   if (undos.length) headlineBits.push(`${plural(undos.length, 'turn')} rolled back`);
   if (humanDecisions.length) headlineBits.push(plural(humanDecisions.length, 'decision') + V(` by ${AUTHOR}`, ' from you'));
   if (!denied.length && !undos.length && checkpoints.length) headlineBits.push(plural(checkpoints.length, 'turn') + (attached ? '' : ' committed'));
+
+  // An unattended run is the one case where the absence of human decisions is
+  // itself the fact. Leaving it implied reads as "nothing needed approving"
+  // when what happened is that nobody was asked.
+  const unattended = decisions.some((d) => d.scope === 'auto');
   scenes.push({
     kind: 'cover',
     title: headlineBits.length ? headlineBits.join(', ') : 'A session with nothing to flag',
     runs: sbRuns,
+    unattended,
     orient: forReviewer
-      ? `An agent wrote the branch you are about to review${sbRuns > 1 ? `, across ${plural(sbRuns, 'session')}` : ''}. This is what happened while it was writing it — including the things it was stopped from doing, which the diff cannot show you.`
-      : `Everything your agent did in this session, including what you stopped it from doing.`,
+      ? (unattended
+        ? `An agent wrote the branch you are about to review${sbRuns > 1 ? `, across ${plural(sbRuns, 'session')}` : ''}, with nobody watching it work. Nothing here was approved by a person — the rules did the stopping. This is the only account of what it did.`
+        : `An agent wrote the branch you are about to review${sbRuns > 1 ? `, across ${plural(sbRuns, 'session')}` : ''}. This is what happened while it was writing it — including the things it was stopped from doing, which the diff cannot show you.`)
+      : (unattended
+        ? `Everything your agent did while you were not watching, including what the rules stopped it from doing.`
+        : `Everything your agent did in this session, including what you stopped it from doing.`),
     repo: worktree ? basename(worktree) : null,
     branch: created?.branch || null,
     stats: [
