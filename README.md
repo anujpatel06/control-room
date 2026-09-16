@@ -249,15 +249,38 @@ account of what the agent did, and it says so on the first line.
 
 ## The consent gradient
 
-Every tool call passes through an HTTP `PreToolUse` hook to this server, which sorts it into a tier:
+Every tool call passes through a `PreToolUse` hook to this server, which sorts it into a tier:
 
-| Tier | What happens | Default for |
+| Tier | What happens | Covers |
 |---|---|---|
-| never | denied, no prompt, logged | `rm -rf`, `git push`, `sudo`, `.env`, `curl … | sh` |
-| ask | held until a human decides in the UI; denied if nobody answers in 2 minutes (fails closed) | Bash, Edit, Write, WebFetch, Task |
-| log | allowed, receipt recorded | Read, Glob, Grep |
+| never | refused, nobody asked, recorded with the reason | anything that cannot be undone — see below |
+| ask | only with `--supervise`: held until you decide; refused if nobody answers in 2 minutes | Bash, Edit, Write, WebFetch, Task |
+| log | allowed and recorded | everything else — and, unattended, everything that would have been asked |
 
 "Allow always" and "Never" turn a decision into a rule for the rest of the run, keyed by tool and first word of the command, or file extension for edits. In lab mode every turn is committed in the agent's worktree by the `Stop` hook, so **Undo turn** is a `git reset --hard HEAD~1`.
+
+A call nobody answered is refused, but nobody refused it, and the record says so
+— "nobody answered" — rather than crediting you with a decision you never made.
+
+### What "never" means
+
+One rule: **refuse what cannot be undone.**
+
+- **Deleting.** Inside the repo, git gives it back, so `rm -rf node_modules` runs. Outside the repo, in your home directory, at the root, `.git` itself, or a path only known at run time (`$SOME_VAR`) is refused. Scratch space under the system temp folder is allowed, except for the temp folder itself, a folder that holds this repo, or another git repository.
+- **Pushing.** A feature branch is how work reaches review, so it runs. A force-push, deleting a remote branch, `--mirror`, or pushing straight to `main`, `master` or the remote's default branch is refused — a bare `git push` asks git which branch you are on.
+- **Local history git never had.** `git clean -fd`, `git reset --hard` over uncommitted work, `reflog expire`, `gc --prune=now` and `stash clear` are refused. `git clean -fdX`, which only removes ignored build output, is not.
+- **Secrets.** Refused when a real secret would be shown to the agent, sent somewhere, or carried out of the repo: `cat .env`, `curl -F file=@.env`, `cp .env /tmp`, the Read tool on `.env`, `~/.aws/credentials`, `~/.ssh`. Not refused: `.env.example`, `--env-file .env`, `source .env`, `test -f .env`, `cp .env .env.bak`, and any file git already tracks, since that is already readable by anyone with the repo.
+- **The rest.** `sudo` and its relatives, a download piped into anything that runs it, world-writable `chmod`, disk and filesystem tools, deleting a GitHub repository.
+
+It reads a command the way a shell runs it: `cd ~ && rm -rf Documents` is refused because the `cd` moves where the delete lands; `bash -c`, `eval`, `$(…)`, `xargs`, `find -exec` and `npx rimraf` are unwrapped and checked; `\rm` and `/bin/rm` are `rm`; a path is followed through symlinks; `git -c x=y push --force` is still a force-push; `git checkout main && git push` is still a push to main. Windows `Remove-Item`, `rd /s` and `del /s` are covered. Any tool carrying a command is checked, not only one named `Bash`.
+
+### What it is not
+
+**It is not a sandbox.** It catches what a well-meaning agent actually types, and it was built by collecting every bypass two independent test runs could find — 126 destructive commands, all refused, and 97 ordinary ones, none refused, all kept as tests. But a determined or compromised agent can still get past a rule that reads text: code handed to an interpreter (`python -c`, `node -e`) is only inspected for the obvious, and a script the agent writes to a file and then runs is not inspected at all.
+
+For isolation, run the agent in a container, a VM, or Claude Code's own sandbox, and use Nearly for what it is for — a record of what happened, including what was stopped, that reaches the person reviewing the code.
+
+### Lab mode
 
 Lab mode is off by default. `nearly open` shows your own sessions and what
 needs you — the gate, which is what you installed this for. `nearly lab` adds

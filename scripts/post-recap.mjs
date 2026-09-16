@@ -59,7 +59,7 @@ lines.push('');
 if (outcome?.notDone?.length) {
   lines.push(`> **${outcome.notDone.length} thing${outcome.notDone.length > 1 ? 's' : ''} the agent wanted to do did not happen.** The diff cannot show you this.`);
   lines.push('>');
-  for (const n of outcome.notDone) lines.push(`> - \`${n.tool}\` · \`${n.what}\` — ${n.by === 'policy' ? 'blocked by policy' : 'refused by the supervisor'}`);
+  for (const n of outcome.notDone) lines.push(`> - \`${n.tool}\` · \`${n.what}\` — ${n.by === 'policy' ? 'blocked by policy' : n.by === 'timeout' ? 'nobody answered, so it was refused' : 'refused by the supervisor'}`);
   lines.push('');
 }
 lines.push('| ' + cover.stats.map(([k]) => k).join(' | ') + ' |');

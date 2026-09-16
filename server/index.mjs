@@ -461,7 +461,7 @@ const server = http.createServer(async (req, res) => {
       if (already) { already.responders.push(respond); return; }
       const item = { id, sid, tool: shown, input: hook.tool_input, tier, reason, key: ruleKey(hook), at: Date.now(), holdMs, responders: [respond] };
       item.timer = setTimeout(() => decide(sid, id, 'deny',
-        `no human answer in ${Math.round(holdMs / 1000)}s; nearly fails closed`), holdMs);
+        `no human answer in ${Math.round(holdMs / 1000)}s; nearly fails closed`, 'timeout'), holdMs);
       s.pending.set(id, item);
       s.state = 'waiting';
       record(sid, { type: 'ask', ...pendingView(item) });

@@ -78,7 +78,7 @@ if (notDone.length) {
   console.log('');
   console.log(`  ${red('These never happened, and the diff will not show them:')}`);
   for (const n of notDone) {
-    const by = n.by === 'policy' ? 'blocked by policy' : 'you refused it';
+    const by = n.by === 'policy' ? 'blocked by policy' : n.by === 'timeout' ? 'nobody answered' : 'you refused it';
     console.log(`    · ${n.tool}  ${n.what}  ${dim(`(${by})`)}`);
   }
 }

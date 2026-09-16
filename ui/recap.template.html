@@ -335,7 +335,7 @@ const render = {
       <div class="col"><span class="lbl">${esc(askedFor)}</span><div class="body">${esc(s.task)}</div></div>
       <div class="col"><span class="lbl">Agent reported</span><div class="body">${esc(s.report || '(no final message)')}</div></div>
     </div>
-    ${s.notDone.length ? `<div class="notdone">${s.notDone.map((n) => `<div class="row">${T(n.by === 'policy' ? 'never' : 'deny', n.by === 'policy' ? 'blocked by policy' : saidNo)}<span class="s" title="${esc(n.what)}">${esc(n.tool)} · ${esc(n.what)}</span></div>`).join('')}</div>` : ''}
+    ${s.notDone.length ? `<div class="notdone">${s.notDone.map((n) => `<div class="row">${T(n.by === 'policy' ? 'never' : 'deny', n.by === 'policy' ? 'blocked by policy' : n.by === 'timeout' ? 'nobody answered' : saidNo)}<span class="s" title="${esc(n.what)}">${esc(n.tool)} · ${esc(n.what)}</span></div>`).join('')}</div>` : ''}
     <div class="sub">${s.head ? `Worktree now at <span class="mono">${esc(s.head)}</span>` : ''}${s.turns ? ` · ${s.turns} turns` : ''}${s.cost != null ? ` · est. $${Number(s.cost).toFixed(2)} of subscription` : ''}</div>`,
 
   credits: () => `

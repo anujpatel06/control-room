@@ -347,3 +347,52 @@ test('text from an agent cannot run as code in the record page', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// A call nobody answered is refused, but nobody refused it. The record credited
+// every non-policy refusal to a person, so an unanswered `ls -la` read as
+// "Anuj said no after 120 seconds", counted towards "decisions by Anuj", and
+// appeared in the pull request as "refused by the supervisor". That is a claim
+// about a human a reviewer cannot check, which is the worst thing this can say.
+test('a call nobody answered is not credited to a person', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nearly-attr-'));
+  const recs = join(dir, 'rec'), pages = join(dir, 'pages'), story = join(dir, 'story');
+  for (const d of [recs, pages, story]) mkdirSync(d, { recursive: true });
+  const sid = 'bbbbbbbb-1111-4222-8333-444444444444';
+  let at = 1789000000000;
+  const ev = (e) => JSON.stringify({ ...e, session: sid, at: at++ });
+  const held = (id, command) => ev({ type: 'ask', id, tool: 'Bash', input: { command }, tier: 'ask', reason: 'default for Bash', key: 'Bash:x' });
+  writeFileSync(join(recs, `${sid}.jsonl`), [
+    ev({ type: 'session', subtype: 'created', name: 'attr', branch: 'feat/a', worktree: dir, attached: true }),
+    ev({ type: 'prompt', text: 'tidy up' }),
+    held('h1', 'npm test'), ev({ type: 'decision', id: 'h1', decision: 'allow', why: 'human allow (once)', scope: 'once', tool: 'Bash', waitedMs: 2000 }),
+    held('h2', 'git status'), ev({ type: 'decision', id: 'h2', decision: 'deny', why: 'human deny (once)', scope: 'once', tool: 'Bash', waitedMs: 1500 }),
+    held('h3', 'ls -la'), ev({ type: 'decision', id: 'h3', decision: 'deny', why: 'no human answer in 120s; nearly fails closed', scope: 'timeout', tool: 'Bash', waitedMs: 120000 }),
+    ev({ type: 'session', subtype: 'exited', reason: 'other' }),
+  ].join('\n') + '\n');
+
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'build-recap.mjs'), sid, '--no-audio'], {
+    encoding: 'utf8', timeout: 60_000, env: { ...process.env, NEARLY_RECORDINGS: recs, NEARLY_OUT: pages, NEARLY_STORY: story },
+  });
+  try {
+    assert.equal(r.status, 0, r.stderr);
+    const sb = JSON.parse(readFileSync(join(story, readdirSync(story)[0]), 'utf8'));
+    const nd = sb.scenes.find((s) => s.kind === 'outcome').notDone;
+    assert.equal(nd.find((n) => /git status/.test(n.what))?.by, 'you', 'a real refusal lost its person');
+    assert.equal(nd.find((n) => /ls -la/.test(n.what))?.by, 'timeout', 'an unanswered call was credited to a person');
+
+    const asked = Number(sb.scenes.find((s) => s.kind === 'cover').stats.find(([k]) => /^Asked/.test(k))[1]);
+    assert.equal(asked, 2, 'the unanswered call was counted as a decision');
+
+    const scene = sb.scenes.find((s) => s.kind === 'decision' && JSON.stringify(s.input).includes('ls -la'));
+    assert.doesNotMatch(scene.narration, /said no/, 'the scene says someone said no');
+
+    const post = spawnSync(process.execPath, [join(root, 'scripts', 'post-recap.mjs'), readdirSync(story)[0].replace(/\.json$/, ''), '--dry-run'], {
+      encoding: 'utf8', env: { ...process.env, NEARLY_STORY: story, NEARLY_OUT: pages },
+    });
+    const line = (post.stdout || '').split('\n').find((l) => l.includes('ls -la')) || '';
+    assert.doesNotMatch(line, /refused by the supervisor/, 'the pull request says the supervisor refused it');
+    assert.match(line, /nobody answered/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

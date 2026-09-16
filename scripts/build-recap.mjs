@@ -220,10 +220,17 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   const undos = events.filter((e) => e.type === 'undo');
   const finals = events.filter((e) => e.type === 'result');
   const texts = events.filter((e) => e.type === 'text');
-  const humanDecisions = decisions.filter((d) => d.waitedMs != null);
+  // A held call nobody answered is denied, but nobody decided it. Counting it as
+  // a decision made the headline claim "7 decisions by Anuj" and the comment say
+  // "refused by the supervisor" about calls no person ever looked at — the one
+  // kind of claim a reviewer has no way to check. Recordings from before the
+  // server marked timeouts are recognised by their reason.
+  const timedOut = (d) => d.scope === 'timeout' || /no human answer/.test(d.why || '');
+  const humanDecisions = decisions.filter((d) => d.waitedMs != null && !timedOut(d));
   const denied = decisions.filter((d) => d.decision === 'deny');
   const blocked = decisions.filter((d) => d.tier === 'never');
-  const humanWaitMs = humanDecisions.reduce((n, d) => n + d.waitedMs, 0);
+  // The wait still happened, answered or not.
+  const humanWaitMs = decisions.filter((d) => d.waitedMs != null).reduce((n, d) => n + d.waitedMs, 0);
   const lastResult = finals.at(-1);
 
   const name = created?.name ?? id.slice(0, 8);
@@ -321,6 +328,8 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
       let narration;
       if (e.tier === 'never') {
         narration = `${asked.replace('It asked', 'It tried')}. A never rule blocked it before ${V('anyone', 'you')} saw it.`;
+      } else if (timedOut(e)) {
+        narration = `${asked}. Nobody answered in ${w} seconds, so it was refused rather than allowed. The agent carried on without it.`;
       } else if (e.decision === 'allow') {
         narration = `${asked}. ${SUP} allowed it${e.scope === 'always' ? ' as a rule' : ''} after ${w} seconds.`;
       } else {
@@ -392,7 +401,7 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   const notDone = denied.map((d) => {
     const ask = asks.find((a) => a.id === d.id);
     const input = ask?.input ?? d.input ?? {};
-    return { tool: d.tool, what: short(describeInput(d.tool, input), 90), by: d.tier === 'never' ? 'policy' : 'you' };
+    return { tool: d.tool, what: short(describeInput(d.tool, input), 90), by: d.tier === 'never' ? 'policy' : timedOut(d) ? 'timeout' : 'you' };
   });
   const head = canGit && !created?.attached ? git(worktree, ['rev-parse', '--short', 'HEAD']) : null;
   scenes.push({
@@ -401,11 +410,13 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
     narration: (() => {
       let n = `The agent reported: ${short(finalText, 150)}`;
       if (!notDone.length) return n;
-      const byHuman = notDone.filter((x) => x.by !== 'policy').length;
-      const byPolicy = notDone.length - byHuman;
+      const byHuman = notDone.filter((x) => x.by === 'you').length;
+      const byPolicy = notDone.filter((x) => x.by === 'policy').length;
+      const byTimeout = notDone.filter((x) => x.by === 'timeout').length;
       const parts = [];
       if (byHuman) parts.push(`${byHuman} ${byHuman === 1 ? 'was' : 'were'} refused by ${sup}`);
       if (byPolicy) parts.push(`${byPolicy} ${byPolicy === 1 ? 'was' : 'were'} blocked by policy before anyone saw ${byPolicy === 1 ? 'it' : 'them'}`);
+      if (byTimeout) parts.push(`${byTimeout} ${byTimeout === 1 ? 'was' : 'were'} refused because nobody answered`);
       return `${n} Read that with a caveat: ${plural(notDone.length, 'requested step')} never ran. ${parts.join(', and ')}.`;
     })(),
   });
