@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dataRoot, paths } from '../server/paths.mjs';
 import { choose, installed as agentsOnMachine } from './detect.mjs';
+import { installRuntime, hasRuntime, isRuntime, runtimeCommand } from './runtime.mjs';
 import { ADAPTERS } from '../server/adapters.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -76,32 +77,48 @@ const viaNpx = /[\\/]_npx[\\/]/.test(root);
 
 // `npx nearly-cli` should be the whole of it. An npx run is a temporary
 // download, so hooks pointing at it would pin a version in a directory npm
-// clears, and no fix would ever reach this repo. Install it properly instead,
-// once, out loud, so the one command someone types actually leaves them with a
-// working tool. --no-install skips it.
-function installGlobally() {
-  if (!viaNpx || onPath() || argv.includes('--no-install') || process.env.NEARLY_NO_INSTALL === '1') return false;
-  process.stdout.write(dim(`  Installing nearly so upgrades reach you… `));
-  const r = spawnSync(NPM, ['install', '-g', `nearly-cli@${pkgVersion()}`, '--silent', '--no-fund', '--no-audit'],
-    { encoding: 'utf8', timeout: 180_000 });
-  if (r.status === 0 && onPath()) { console.log('done'); return true; }
-  console.log(dim('skipped'));
-  console.log(dim('    Running from npx instead. Upgrades will not reach this repo automatically;'));
-  console.log(dim('    npm install -g nearly-cli when you want that.'));
+// clears, and no fix would ever reach this repo.
+//
+// This used to `npm install -g`, which failed silently on every up-to-date
+// Windows machine (Node will not spawn npm.cmd without a shell) and on any Mac
+// whose Node came from the official installer (a root-owned prefix). Each fell
+// back to a pinned npx call in every hook: slower on every tool call, and stuck
+// on that release for good. So it installs into ~/.nearly/runtime instead —
+// somewhere the user always owns. --no-install skips it.
+function installRuntimeOnce() {
+  if (!fromPackage || onPath() || hasRuntime() || isRuntime(root)) return hasRuntime();
+  if (argv.includes('--no-install') || process.env.NEARLY_NO_INSTALL === '1') return false;
+  process.stdout.write(dim('  Installing nearly so upgrades reach you… '));
+  const r = installRuntime(pkgVersion());
+  if (r.ok) { console.log('done'); return true; }
+  console.log(dim('could not'));
+  // The reason, in full. "skipped" in grey is how the last version of this
+  // left someone pinned to a broken release without ever knowing why.
+  console.log(`    ${r.error}`);
+  console.log(dim('    Falling back to npx, which is slower on every tool call and will not'));
+  console.log(dim('    pick up fixes. Run nearly again here once the problem above is solved.'));
   return false;
 }
+
+// Preference, fastest and most durable first:
+//   1. a `nearly` on PATH that is really this tool
+//   2. the runtime install in ~/.nearly/runtime
+//   3. a pinned npx call — works, but slow and never upgrades
+//   4. the checkout's own script, for someone developing this
 let installed = onPath();
+let runtime = hasRuntime();
 const hookCmd = (ev) => installed
-  ? `nearly hook ${ev}`   // verified above to survive this process
-  : fromPackage
-    ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
-    : `node ${JSON.stringify(HOOK)} ${ev}`;
-// A function, not a value: the install below changes the answer, and computing
-// it early told a fresh install it was pinned when it was not.
-const updateNote = () => installed
+  ? `nearly hook ${ev}`
+  : runtime
+    ? `${runtimeCommand()} hook ${ev}`
+    : fromPackage
+      ? `npx -y nearly-cli@${pkgVersion()} hook ${ev}`
+      : `node ${JSON.stringify(HOOK)} ${ev}`;
+// A function, not a value: the install below changes the answer.
+const updateNote = () => (installed || runtime)
   ? 'upgrades reach this repo automatically'
   : fromPackage
-    ? `pinned to v${pkgVersion()} — run nearly again here after upgrading`
+    ? `pinned to v${pkgVersion()} — slow, and fixes will not reach it until you run nearly again`
     : 'running from a checkout — git pull updates it';
 
 const argv = process.argv.slice(2);
@@ -138,7 +155,7 @@ if (!existsSync(join(repo, '.git'))) {
 
 // Do this before the hooks are written, so they can point at the installed
 // command rather than a temporary npx download.
-if (!off && installGlobally()) installed = onPath();
+if (!off) runtime = installRuntimeOnce() || hasRuntime();
 
 // ---------------------------------------------------------------------------
 // Agent hooks

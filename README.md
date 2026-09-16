@@ -159,6 +159,19 @@ Nothing to configure, no server to start, and `nearly off` removes all of it.
 Run it again in any other repo you want recorded. After the first time the
 command is just `nearly`.
 
+### Where it installs
+
+`npx nearly-cli` installs a copy into `~/.nearly/runtime`, and the hooks call
+that copy directly. Not `npm install -g`, which it used to use and which failed
+silently in three ordinary situations: on any up-to-date Windows machine, where
+Node will not start `npm.cmd` without a shell; on a Mac whose Node came from the
+official installer, where the global folder belongs to root; and whenever npx
+itself was running it, because npx passes its own settings down to the npm it
+starts. Each failure fell back to a pinned `npx -y nearly-cli@<version>` in every
+hook — slower on every tool call, and stuck on that release for good. A folder
+you always own avoids all three, and if the install still fails, `nearly` now
+prints npm's actual reason instead of a pointer to a log file.
+
 ### Upgrading
 
 It updates itself. When you run a command and a newer version exists, Nearly
@@ -175,7 +188,7 @@ Four rules keep that from being something you regret installing:
   before you trust it.
 - **Never silent.** An update that happened without being mentioned is
   indistinguishable from a compromise, so it always says what it did.
-- **Never fatal.** No network, a locked global directory, a slow registry: you
+- **Never fatal.** No network, a locked folder, a slow registry: you
   keep the version you have, the command you ran still works, and it tells you
   rather than leaving you to assume you are current.
 

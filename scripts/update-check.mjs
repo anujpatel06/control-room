@@ -20,6 +20,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, tmpdir } from 'node:os';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { installRuntime, isRuntime, cleanEnv } from './runtime.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DAY = 24 * 60 * 60 * 1000;
@@ -46,6 +47,9 @@ function compare(a, b) {
 // Updating in place only makes sense for a global install. An npx run is
 // ephemeral and a checkout belongs to whoever cloned it.
 function installKind() {
+  // Installed by attach into ~/.nearly/runtime. It upgrades itself in place, so
+  // every repo whose hooks point there moves with it.
+  if (isRuntime(root)) return 'runtime';
   if (/[\\/]_npx[\\/]/.test(root)) return 'npx';
   try {
     const bin = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['nearly'],
@@ -100,6 +104,27 @@ export function applyUpdate(u, { background = false } = {}) {
     return;
   }
 
+  if (u.kind === 'runtime') {
+    if (background) {
+      try {
+        const child = spawn(process.execPath, [join(root, 'scripts', 'update-check.mjs'), '--install-runtime', u.to],
+          { detached: true, stdio: 'ignore' });
+        child.on('error', () => { /* next time */ });
+        child.unref();
+        console.log('');
+        console.log(dim(`  Nearly ${u.to} is out (you have ${u.from}) — updating in the background.`));
+      } catch { /* never worth failing a push over */ }
+      return;
+    }
+    process.stdout.write(dim(`  Updating Nearly ${u.from} → ${u.to}… `));
+    const r = installRuntime(u.to);
+    console.log(r.ok ? 'done' : 'could not');
+    if (!r.ok) console.log(`    ${r.error}`);
+    else console.log(dim('  Every repo you turned it on for is now on the new version.'));
+    console.log('');
+    return;
+  }
+
   if (u.kind !== 'global') {
     console.log('');
     console.log(`  ${bold(`Nearly ${u.to} is out`)} ${dim(`(you have ${u.from})`)}`);
@@ -113,7 +138,7 @@ export function applyUpdate(u, { background = false } = {}) {
       // in place by the next command. A .cmd on Windows only spawns through a
       // shell, which is the same trap npm itself fell into here once already.
       const child = spawn(NPM, ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
-        { detached: true, stdio: 'ignore', shell: process.platform === 'win32' });
+        { detached: true, stdio: 'ignore', shell: process.platform === 'win32', env: cleanEnv() });
       child.on('error', () => { /* offline, or no permission: next time */ });
       child.unref();
       console.log('');
@@ -124,7 +149,7 @@ export function applyUpdate(u, { background = false } = {}) {
 
   process.stdout.write(dim(`  Updating Nearly ${u.from} → ${u.to}… `));
   const r = spawnSync(NPM, ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
-    { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32' });
+    { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32', env: cleanEnv() });
 
   if (r.status === 0) {
     console.log('done');
@@ -136,4 +161,10 @@ export function applyUpdate(u, { background = false } = {}) {
     console.log(dim(`  Run it yourself: npm install -g ${u.name}@latest`));
   }
   console.log('');
+}
+
+// `node update-check.mjs --install-runtime <version>` — what the background
+// updater runs, detached, so a push never waits on npm.
+if (process.argv[2] === '--install-runtime' && process.argv[3]) {
+  installRuntime(process.argv[3]);
 }
