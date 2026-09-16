@@ -63,7 +63,7 @@ if (existsSync(hookPath)) {
   const existing = readFileSync(hookPath, 'utf8');
   const mine = ours(existing);
   if (!mine) {
-    console.error(`${hookPath} already exists and was not written by the Nearly.`);
+    console.error(`${hookPath} already exists and was not written by Nearly.`);
     console.error('Refusing to overwrite it. Move it aside, or add this line to it yourself:');
     console.error(`  ${RUN} push-record "${repo}" || true`);
     process.exit(1);

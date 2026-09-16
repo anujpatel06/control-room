@@ -535,3 +535,24 @@ test('doctor does not pass a hook that only works because npx is running', () =>
     rmSync(fakeNpx, { recursive: true, force: true });
   }
 });
+
+test('doctor does not send someone with their own pre-push hook to a command that will refuse it', () => {
+  // Install leaves a pre-push hook it did not write alone, but doctor still said
+  // "run `nearly` here to install it", which only refuses again. A hook that merely
+  // mentioned "nearly" also passed as installed.
+  const repo = tempRepo();
+  try {
+    const hook = join(repo, '.git', 'hooks', 'pre-push');
+    mkdirSync(dirname(hook), { recursive: true });
+    const doctor = () => spawnSync(process.execPath, [join(root, 'scripts', 'doctor.mjs'), repo],
+      { encoding: 'utf8', env: { ...sandboxed(), NO_COLOR: '1', NEARLY_NO_UPDATE: '1' } }).stdout;
+    writeFileSync(hook, '#!/bin/sh\n# nearly done: run the linter\nnpm run lint\n');
+    let out = doctor();
+    assert.match(out, /✗ pre-push hook\s+yours is there/, 'a hook mentioning "nearly" passed as installed');
+    assert.match(out, /push-record/, 'doctor did not say what to add to the hook');
+    assert.doesNotMatch(out, /run `nearly` here to install it/);
+    rmSync(hook);
+    out = doctor();
+    assert.match(out, /✗ pre-push hook\s+missing/);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});

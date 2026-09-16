@@ -187,10 +187,14 @@ if (runs) {
 
 // 5 — the hook that offers the record at push time
 const pushHook = join(repo, '.git', 'hooks', 'pre-push');
-const hasPush = existsSync(pushHook) && /x-session-record-hook|nearly/i.test((() => {
-  try { return readFileSync(pushHook, 'utf8'); } catch { return ''; }
-})());
-say(hasPush, 'pre-push hook', hasPush ? 'installed' : 'missing', 'run `nearly` here to install it');
+const pushText = (() => { try { return readFileSync(pushHook, 'utf8'); } catch { return null; } })();
+// A pre-push hook of the person's own (husky, lefthook, a script) makes install
+// refuse to overwrite it, so "run nearly" would send them round in a circle.
+const hasPush = !!pushText && /x-session-record-hook|push-record/.test(pushText);
+if (hasPush) say(true, 'pre-push hook', 'installed');
+else if (pushText != null) say(false, 'pre-push hook', 'yours is there, without Nearly in it',
+  'your own pre-push hook was left alone — add `nearly push-record "$(git rev-parse --show-toplevel)" || true` to it');
+else say(false, 'pre-push hook', 'missing', 'run `nearly` here to install it');
 
 // 6 — gh, which is how a pull request is found and commented on. Its absence
 // used to be reported as "no pull request yet", which sent people off to raise
