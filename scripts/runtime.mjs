@@ -49,20 +49,24 @@ export function cleanEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
 }
 
-// npm's last line is nearly always "A complete log of this run can be found in",
-// which is where the last version of this pointed people. The cause is the
-// `npm error code` line and the sentence after it.
+// npm reports a failure as key/value lines (`code`, `syscall`, `path`, `errno`)
+// followed by a sentence, and ends almost every one with "A complete log of this
+// run can be found in". Showing the last line pointed people at a log file;
+// showing the first two showed `code ENOENT — syscall open` and dropped the part
+// that says which file. The error code plus npm's own sentence is the answer.
+const KEYS = /^(code|syscall|path|errno|dest|spawnargs|signal|cmd|cwd|file|type|stack|A complete log)\b/i;
 export function npmError(r) {
-  const lines = String(r.stderr || r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean)
-    .filter((l) => !/complete log of this run/i.test(l));
-  const code = lines.find((l) => /npm (error|ERR!) code/i.test(l));
-  const said = lines.filter((l) => /^npm (error|ERR!)/i.test(l) && !/code|A complete log/i.test(l));
-  return [code, said[0]].filter(Boolean).map((l) => l.replace(/^npm (error|ERR!)\s*/i, '')).join(' — ')
-    || lines.pop() || `npm exited ${r.status}`;
+  const lines = String(r.stderr || r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const body = (l) => l.replace(/^npm (error|ERR!)\s*/i, '');
+  const errs = lines.filter((l) => /^npm (error|ERR!)/i.test(l)).map(body);
+  const code = errs.find((l) => /^code\b/i.test(l))?.replace(/^code\s+/i, '');
+  const sentence = errs.filter((l) => !KEYS.test(l)).map((l) => l.replace(/^[a-z]+ (?=[A-Z])/, ''))[0];
+  const said = [code, sentence].filter(Boolean);
+  // Drop the code when the sentence already starts with it.
+  if (said.length === 2 && said[1].startsWith(said[0])) said.shift();
+  return said.join(' — ') || lines.filter((l) => !/complete log of this run/i.test(l)).pop() || `npm exited ${r.status}`;
 }
 
-// Returns { ok, error }. The error is the real one, because "skipped" in grey
-// is how the last version of this told nobody anything.
 export function installRuntime(version) {
   try { mkdirSync(RUNTIME, { recursive: true }); } catch (e) { return { ok: false, error: e.message }; }
   // A tarball or path can stand in for the registry — how the tests install a

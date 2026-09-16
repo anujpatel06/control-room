@@ -18,7 +18,7 @@
 // it, and if it cannot start, Claude Code falls back to its own prompts and
 // nothing breaks.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync, rmdirSync, rmSync } from 'node:fs';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -121,7 +121,19 @@ const updateNote = () => (installed || runtime)
     ? `pinned to v${pkgVersion()} — slow, and fixes will not reach it until you run nearly again`
     : 'running from a checkout — git pull updates it';
 
-const argv = process.argv.slice(2);
+// Flags take a value either way: `--agent=cursor` or `--agent cursor`. Only the
+// first worked, so `nearly --agent cursor` read "cursor" as the repo path and
+// said it was not a git repository.
+const VALUED = new Set(['--agent', '--name']);
+const argv = (() => {
+  const raw = process.argv.slice(2), out = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (VALUED.has(raw[i]) && raw[i + 1] !== undefined && !raw[i + 1].startsWith('--')) { out.push(`${raw[i]}=${raw[i + 1]}`); i++; }
+    else out.push(raw[i]);
+  }
+  return out;
+})();
+const flagValue = (f) => argv.find((a) => a.startsWith(`${f}=`))?.slice(f.length + 1);
 const off = argv.includes('--off') || argv.includes('--detach');
 // Unattended unless you ask to supervise.
 //
@@ -135,20 +147,35 @@ const off = argv.includes('--off') || argv.includes('--detach');
 // recorded, and holding for approval is something you turn on while watching.
 const supervise = argv.includes('--supervise');
 const auto = !supervise;
-const repo = resolve(argv.find((a) => !a.startsWith('--')) || process.cwd());
-const nameIdx = argv.indexOf('--name');
-const name = (nameIdx !== -1 ? argv[nameIdx + 1] : basename(repo))
+// The repo is wherever git says its top is. Looking only for a .git folder in
+// the current directory rejected every subfolder, which is where people usually
+// are when they first try something.
+const asked = resolve(argv.find((a) => !a.startsWith('--')) || process.cwd());
+const repo = (() => {
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'],
+      { cwd: asked, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (!top) return asked;
+    // Keep the path as it was typed when it already is the top; git hands back
+    // the resolved one (/private/var for /var on macOS), which is the same place
+    // spelled in a way nobody wrote.
+    return realpathSync.native(asked) === realpathSync.native(top) ? asked : resolve(top);
+  } catch { return asked; }
+})();
+const name = (flagValue('--name') ?? basename(repo))
   .replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'repo';
 
 // npm is a .cmd shim on Windows and Node will not run one through spawn unless
 // it is named exactly. Without this, installing and upgrading both fail there.
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-const ok = (s) => `\x1b[32m${s}\x1b[0m`;
+// Colour only on a terminal; piped into a file or a CI log it is noise.
+const COLOR = !!process.stdout.isTTY && !process.env.NO_COLOR;
+const dim = (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : String(s));
+const bold = (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : String(s));
+const ok = (s) => (COLOR ? `\x1b[32m${s}\x1b[0m` : String(s));
 
 if (!existsSync(join(repo, '.git'))) {
-  console.error(`${repo} is not a git repository.`);
+  console.error(`${asked} is not inside a git repository.`);
   console.error('Run this inside the repo you want recorded, or pass its path.');
   process.exit(1);
 }
@@ -183,6 +210,30 @@ for (const a of chosen) {
   } catch (e) {
     // One harness's config being unwritable must not cost you the others.
     notes.push(`${a.name}: ${e.message}`);
+  }
+}
+
+// Leave nothing behind. Turning off used to strip the hooks and keep an empty
+// `{}` file and empty `.cursor/ .agents/ .codex/ .gemini/ .windsurf/` folders —
+// and the next `nearly` read those folders as signs of use and wired all seven
+// agents. Only what is empty goes; nothing of anyone else's is touched, and
+// nothing above the repo.
+if (off) {
+  for (const a of ADAPTERS) {
+    const file = join(repo, a.config);
+    try {
+      if (existsSync(file)) {
+        const v = JSON.parse(readFileSync(file, 'utf8'));
+        const hollow = v && typeof v === 'object' && Object.entries(v)
+          .filter(([k]) => k !== 'version')
+          .every(([, x]) => x == null || (typeof x === 'object' && !Object.keys(x).length));
+        if (hollow) rmSync(file);
+      }
+      for (let dir = dirname(file); dir !== repo && dir.startsWith(repo); dir = dirname(dir)) {
+        if (!existsSync(dir) || readdirSync(dir).length) break;
+        rmdirSync(dir);
+      }
+    } catch { /* unreadable or busy: leave it */ }
   }
 }
 
@@ -224,7 +275,7 @@ async function checkPort() {
   try { mine = realpathSync(root); } catch { /* compare the literal path */ }
   try {
     const { reclaim } = await import('../server/reclaim.mjs');
-    return await reclaim({ port: PORT, base: `http://127.0.0.1:${PORT}`, root: mine });
+    return await reclaim({ port: PORT, base: `http://127.0.0.1:${PORT}`, root: mine, version: pkgVersion() });
   } catch { return null; }
 }
 const port = off ? null : await checkPort();
@@ -232,8 +283,15 @@ const port = off ? null : await checkPort();
 // ---------------------------------------------------------------------------
 // git pre-push hook
 // ---------------------------------------------------------------------------
+const baseCmd = () => installed
+  ? 'nearly'
+  : runtime
+    ? runtimeCommand()
+    : fromPackage
+      ? `npx -y nearly-cli@${pkgVersion()}`
+      : `node ${JSON.stringify(join(root, 'bin', 'nearly.mjs'))}`;
 const push = spawnSync(process.execPath,
-  [join(root, 'scripts', 'install-push-hook.mjs'), repo, ...(off ? ['--remove'] : [])],
+  [join(root, 'scripts', 'install-push-hook.mjs'), repo, '--cmd', baseCmd(), ...(off ? ['--remove'] : [])],
   { encoding: 'utf8' });
 
 // ---------------------------------------------------------------------------
@@ -307,7 +365,15 @@ for (const a of wired) {
   console.log(`  ${ok('·')} ${a.name} sessions here are gated and recorded ${how}`);
 }
 console.log(`  ${ok('·')} ${dim(updateNote())}`);
-console.log(`  ${ok('·')} ${push.status === 0 ? 'the record is offered when you push' : dim('pre-push hook skipped: ' + (push.stderr || '').trim().split('\n')[0])}`);
+if (push.status === 0) {
+  console.log(`  ${ok('·')} the record is offered when you push`);
+} else {
+  // All of it: when a pre-push hook of yours is already there, the lines after
+  // the first are the ones that say how to add Nearly to it by hand.
+  const said = (push.stderr || '').trim().split('\n').filter(Boolean);
+  console.log(`  ${ok('·')} ${dim(`pre-push hook skipped: ${said[0] || 'unknown reason'}`)}`);
+  for (const line of said.slice(1)) console.log(`    ${dim(line)}`);
+}
 if (base) {
   console.log(`  ${ok('·')} records publish to ${base}`);
 } else {

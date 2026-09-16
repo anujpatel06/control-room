@@ -25,8 +25,9 @@
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync } from 'node:fs';
 import { byId } from '../server/adapters.mjs';
+import { keep } from '../server/reclaim.mjs';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.NEARLY_PORT || 47653);
@@ -55,6 +56,7 @@ const body = await new Promise((r) => {
 });
 
 const realRoot = (() => { try { return realpathSync(root); } catch { return root; } })();
+const VERSION = (() => { try { return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version; } catch { return null; } })();
 
 // Is the thing on this port *us*?
 //
@@ -67,8 +69,8 @@ async function up(ms = 400) {
     const r = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(ms) });
     if (!r.ok) return false;
     const h = await r.json().catch(() => ({}));
-    if (h.root !== realRoot) return 'stale';   // no root at all means older than this check
-    return true;
+    if (h.root === realRoot || keep(h.version, VERSION)) return true;
+    return 'stale';   // older, or from before servers said what they were
   } catch { return false; }
 }
 
@@ -92,7 +94,7 @@ if (health === 'stale') {
   // only people who ever get the fix are the ones who happen to re-run `nearly`
   // and read the message.
   const { reclaim } = await import('../server/reclaim.mjs');
-  const { outcome } = await reclaim({ port: PORT, base: BASE, root: realRoot });
+  const { outcome } = await reclaim({ port: PORT, base: BASE, root: realRoot, version: VERSION });
   // 'busy' and 'stuck' both mean it is still there. Talking to an old server
   // still gates the call, which is better than not gating it.
   health = (outcome === 'stood-down' || outcome === 'ended' || outcome === 'free') ? false : true;

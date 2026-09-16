@@ -17,6 +17,7 @@
 // because the useful thing is what people type first.
 
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,6 +62,12 @@ switch (cmd) {
   case 'hook':
     return run(s('hook.mjs'), rest);
 
+  // internal: what the git pre-push hook runs. It goes through this command
+  // rather than a path to the script, so it survives the same upgrades and
+  // cache clears the agent hooks do.
+  case 'push-record':
+    return run(s('push-record.mjs'), rest);
+
   case 'record': case 'recap': {
     // Default to the branch you are on, since that is what gets reviewed.
     if (rest.length) return run(s('build-recap.mjs'), rest);
@@ -86,7 +93,7 @@ switch (cmd) {
     return run(s('build-recap.mjs'), ['--voices']);
 
   case 'server': {
-    console.log('Nearly on http://127.0.0.1:47653');
+    console.log(`Nearly on http://127.0.0.1:${process.env.NEARLY_PORT || 47653}`);
     console.log('You do not normally need this: the hooks start it when they need it.');
     return run(join(root, 'server', 'index.mjs'), rest);
   }
@@ -94,7 +101,7 @@ switch (cmd) {
   case 'lab': case 'open': {
     // `open` is the gate: your sessions and what needs you. `lab` adds the
     // panel for starting agents from here, which is a different job.
-    const url = 'http://127.0.0.1:47653' + (cmd === 'lab' ? '/?lab=1' : '');
+    const url = `http://127.0.0.1:${process.env.NEARLY_PORT || 47653}` + (cmd === 'lab' ? '/?lab=1' : '');
     spawn(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open',
       [url], { stdio: 'ignore', detached: true, shell: process.platform === 'win32' }).unref();
     console.log(url);
@@ -118,6 +125,9 @@ switch (cmd) {
   }
 
   default:
+    // `nearly ~/code/app` — a path, not a command. The "not a git repository"
+    // message told people to pass one, and then this said "Unknown command".
+    if (existsSync(cmd) && statSync(cmd).isDirectory()) return run(s('attach.mjs'), [cmd, ...rest]);
     console.error(`Unknown command: ${cmd}`);
     console.error('Try: nearly help');
     process.exit(1);

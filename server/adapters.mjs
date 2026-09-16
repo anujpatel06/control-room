@@ -126,10 +126,20 @@ function writeJson(file, obj) {
   writeFileSync(file, JSON.stringify(obj, null, 2) + '\n');
 }
 
-// Ours is anything that runs nearly. Matching on that rather than on a version
-// or a path is what makes attach safe to re-run, and what stopped a rename from
-// orphaning hooks the last time.
-const isOurs = (h) => /nearly/i.test(JSON.stringify(h ?? ''));
+// Ours: a hook command that runs Nearly's hook, in any form attach has ever
+// written — `nearly hook <event>`, `node "…/nearly.mjs" hook <event>`,
+// `npx -y nearly-cli@x hook <event>`, `node "…/scripts/hook.mjs" <event>`, or
+// the old HTTP hooks. Matching the word "nearly" anywhere claimed any hook that
+// mentioned it, and attach deleted a user's `nearly-finished-notifier/notify.sh`.
+// The quote-and-backslash run tolerates the same command read out of raw JSON.
+export const OURS_RE = /(?:^|[\s"'/\\])(?:nearly(?:\.mjs)?|nearly-cli@\S+?|hook\.mjs)[\\"']*\s+(?:hook\s+)?(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b|:\d+\/hooks\/(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b/;
+
+export function isOurs(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return OURS_RE.test(value);
+  if (typeof value === 'object') return Object.values(value).some(isOurs);
+  return false;
+}
 
 // Strip our entries out of an event map shaped { event: [entry, ...] }, and drop
 // events we emptied so the file does not fill with husks.

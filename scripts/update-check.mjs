@@ -28,8 +28,10 @@ const DAY = 24 * 60 * 60 * 1000;
 // npm is a .cmd shim on Windows and Node will not run one through spawn unless
 // it is named exactly. Without this, installing and upgrading both fail there.
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
+// Colour only on a terminal; piped into a file or a CI log it is noise.
+const COLOR = !!process.stdout.isTTY && !process.env.NO_COLOR;
+const dim = (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : String(s));
+const bold = (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : String(s));
 
 function stampPath() {
   const dir = process.env.XDG_CACHE_HOME || join(homedir() || tmpdir(), '.cache');

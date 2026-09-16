@@ -16,17 +16,19 @@ import { join, resolve, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { paths, dataRoot } from '../server/paths.mjs';
-import { ADAPTERS } from '../server/adapters.mjs';
+import { ADAPTERS, OURS_RE } from '../server/adapters.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || process.cwd());
 const PORT = Number(process.env.NEARLY_PORT || 47653);
 
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-const green = (s) => `\x1b[32m${s}\x1b[0m`;
-const red = (s) => `\x1b[31m${s}\x1b[0m`;
-const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+// Colour only on a terminal; piped into a file or a CI log it is noise.
+const COLOR = !!process.stdout.isTTY && !process.env.NO_COLOR;
+const dim = (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : String(s));
+const bold = (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : String(s));
+const green = (s) => (COLOR ? `\x1b[32m${s}\x1b[0m` : String(s));
+const red = (s) => (COLOR ? `\x1b[31m${s}\x1b[0m` : String(s));
+const yellow = (s) => (COLOR ? `\x1b[33m${s}\x1b[0m` : String(s));
 
 const blockers = [];
 function say(ok, label, detail, fix) {
@@ -45,7 +47,8 @@ console.log(`  ${bold('Nearly')} ${dim(repo)}`);
 console.log('');
 
 // 1 — a repo at all
-const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+// A repo with no commits has no HEAD to name, but it does have a branch.
+const branch = git(['symbolic-ref', '--short', 'HEAD']) || git(['rev-parse', '--abbrev-ref', 'HEAD']) || '(no branch)';
 if (!existsSync(join(repo, '.git'))) {
   say(false, 'a git repository', 'this is not one', `cd into the repo you work in, then run nearly`);
 } else {
@@ -56,7 +59,7 @@ if (!existsSync(join(repo, '.git'))) {
 // and that is the single most common reason for an empty pull request.
 const gated = ADAPTERS.filter((a) => {
   const f = join(repo, a.config);
-  try { return existsSync(f) && /nearly/i.test(readFileSync(f, 'utf8')); } catch { return false; }
+  try { return existsSync(f) && OURS_RE.test(readFileSync(f, 'utf8')); } catch { return false; }
 });
 if (gated.length) say(true, 'agents gated here', gated.map((a) => a.name).join(', '));
 else say(false, 'agents gated here', 'none', 'run `nearly` in this repo to turn it on');
@@ -75,7 +78,7 @@ if (gated.length) {
     const cfg = JSON.parse(readFileSync(join(repo, cc.config), 'utf8'));
     const walk = (o) => {
       if (!o || typeof o !== 'object') return;
-      if (typeof o.command === 'string' && /nearly/i.test(o.command) && /pre-tool/.test(o.command)) cmd = o.command;
+      if (typeof o.command === 'string' && OURS_RE.test(o.command) && /pre-tool/.test(o.command)) cmd = o.command;
       for (const v of Object.values(o)) walk(v);
     };
     walk(cfg);
@@ -91,13 +94,27 @@ if (gated.length) {
     });
     // shell: true because the agent runs these through a shell, and on Windows
     // the installed command is a .cmd that will not spawn any other way.
-    const r = spawnSync(cmd, { input: probe, shell: true, encoding: 'utf8', timeout: 30_000 });
+    // Run it with the PATH the agent will have, not this process's. Launched
+    // through npx, this process has npx's temporary bin first on PATH, holding a
+    // `nearly` that vanishes when npx exits — so a hook calling `nearly` passed
+    // here and could never run for the agent. npm scripts add node_modules/.bin
+    // the same way.
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const agentPath = String(process.env.PATH || process.env.Path || '').split(sep)
+      .filter((d) => d && !/[\\/]_npx[\\/]/.test(d) && !/[\\/]node_modules[\\/]\.bin$/.test(d)).join(sep);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
+    env.PATH = agentPath;
+    if (process.platform === 'win32') env.Path = agentPath;
+    const r = spawnSync(cmd, { input: probe, shell: true, encoding: 'utf8', timeout: 30_000, env });
     const decided = /permissionDecision|"decision"|"permission"/.test(r.stdout || '');
     if (decided) {
       say(true, 'hooks actually fire', 'the gate answered a test call');
     } else {
-      const why = (r.error && r.error.message)
-        || (r.stderr || '').trim().split('\n')[0]
+      const lines = String(r.stderr || '').split('\n').map((l) => l.trim()).filter(Boolean)
+        .filter((l) => !/^(at |node:internal|npm (warn|notice)|\^+$|Node\.js v)/.test(l));
+      const pick = lines.find((l) => /not found|no such file|cannot find|ENOENT|EACCES|permission denied|is not recognized|Error:/i.test(l))
+        || lines[lines.length - 1];
+      const why = (r.error && r.error.message) || pick
         || (r.status !== 0 ? `the hook command exited ${r.status}` : 'the hook ran but answered nothing');
       say(false, 'hooks actually fire', why,
         `the hook command in ${cc.config} does not work here, so nothing is gated and nothing is recorded — check that \`nearly\` runs in a plain shell, then re-run \`nearly\` to rewrite the hooks`);
@@ -139,7 +156,7 @@ const recDir = paths.recordings();
 let runs = 0, otherBranches = new Set();
 const real = (p) => {
   let r;
-  try { r = realpathSync(resolve(p)); } catch { r = resolve(p); }
+  try { r = realpathSync.native(resolve(p)); } catch { r = resolve(p); }
   return process.platform === 'win32' ? r.toLowerCase() : r;   // same place, spelled differently
 };
 try {

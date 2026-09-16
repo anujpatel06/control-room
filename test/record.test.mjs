@@ -330,7 +330,8 @@ test('text from an agent cannot run as code in the record page', () => {
     assert.equal(r.status, 0, `build failed: ${r.stderr}`);
     const file = readdirSync(pages).find((f) => f.endsWith('.html'));
     const html = readFileSync(join(pages, file), 'utf8');
-    const m = html.match(/const R = (.*);\n/);
+    // \r?: git checks the template out with CRLF on Windows.
+    const m = html.match(/const R = (.*);\r?\n/);
     assert.ok(m, 'no record data in the page');
 
     // Nothing an HTML parser could act on survives inside the script block.

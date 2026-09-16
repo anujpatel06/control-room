@@ -125,8 +125,11 @@ test('turning it off removes everything it put there', () => {
     spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo], { encoding: 'utf8', env: sandboxed() });
     assert.ok(existsSync(join(repo, '.git', 'hooks', 'pre-push')));
     spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, '--off'], { encoding: 'utf8', env: sandboxed() });
-    const after = JSON.parse(readFileSync(join(repo, '.claude', 'settings.local.json'), 'utf8'));
+    // Emptied of hooks, the file itself goes too, rather than staying as `{}`.
+    const settings = join(repo, '.claude', 'settings.local.json');
+    const after = existsSync(settings) ? JSON.parse(readFileSync(settings, 'utf8')) : {};
     assert.equal(after.hooks, undefined, 'no hooks left behind');
+    assert.equal(existsSync(join(repo, '.claude')), false, 'an emptied .claude folder was left behind');
     assert.equal(existsSync(join(repo, '.git', 'hooks', 'pre-push')), false, 'no push hook left behind');
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
@@ -157,7 +160,7 @@ test('it will not attach to something that is not a repository', () => {
   try {
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), d], { encoding: 'utf8', env: sandboxed() });
     assert.notEqual(r.status, 0);
-    assert.match(r.stderr, /not a git repository/);
+    assert.match(r.stderr, /not (inside )?a git repository/);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -404,4 +407,131 @@ test('an update found during a push never makes the push wait', async () => {
   assert.ok(Date.now() - started < 1000, 'the push waited on the install');
   assert.ok(said.some((l) => /updating in the background/.test(l)),
     'the background install never started — the spawn failed and was swallowed');
+});
+
+// ---------------------------------------------------------------------------
+// Turning Nearly on and off, as found by a test agent acting as a stranger.
+// Each of these shipped, and each is the kind of thing a stranger only finds by
+// losing something.
+// ---------------------------------------------------------------------------
+
+const attach = (repo, ...extra) => spawnSync(process.execPath, [join(root, 'scripts', 'attach.mjs'), repo, ...extra],
+  { encoding: 'utf8', env: { ...sandboxed(), NEARLY_NO_INSTALL: '1', NEARLY_CONFIG: join(tmpdir(), `nearly-cfg-${process.pid}.json`) } });
+
+test('turning it off leaves your own pre-push hook alone', () => {
+  // Install refused to overwrite a hook it did not write. Off deleted it anyway
+  // and printed "pre-push hook removed".
+  const repo = tempRepo();
+  try {
+    const hook = join(repo, '.git', 'hooks', 'pre-push');
+    mkdirSync(dirname(hook), { recursive: true });
+    writeFileSync(hook, '#!/bin/sh\necho "my own checks"\n');
+    attach(repo);
+    attach(repo, '--off');
+    assert.ok(existsSync(hook), 'off deleted a pre-push hook it did not write');
+    assert.match(readFileSync(hook, 'utf8'), /my own checks/);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('the pre-push hook runs Nearly the way the agent hooks do, not from wherever it was installed', () => {
+  // Installed through npx, it pointed into the npx cache. Once npm cleared that,
+  // every push printed a stack trace, and doctor still said it was installed.
+  const repo = tempRepo();
+  try {
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'install-push-hook.mjs'), repo, '--cmd', 'nearly'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const text = readFileSync(join(repo, '.git', 'hooks', 'pre-push'), 'utf8');
+    assert.match(text, /nearly push-record "/, 'the hook does not run the command it was given');
+    assert.doesNotMatch(text, /_npx|push-record\.mjs/, 'the hook points at a script path again');
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('a hook of yours that happens to mention "nearly" survives', () => {
+  // Anything containing the word counted as Nearly's, so attach deleted a user's
+  // `nearly-finished-notifier/notify.sh`.
+  const repo = tempRepo();
+  try {
+    const file = join(repo, '.claude', 'settings.local.json');
+    mkdirSync(dirname(file), { recursive: true });
+    const mine = { type: 'command', command: '/Users/me/code/nearly-finished-notifier/notify.sh' };
+    writeFileSync(file, JSON.stringify({ hooks: { Stop: [{ hooks: [mine] }] } }));
+    attach(repo);
+    attach(repo);
+    const after = JSON.parse(readFileSync(file, 'utf8'));
+    assert.ok(JSON.stringify(after).includes('nearly-finished-notifier'), 'attach deleted a hook it did not write');
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('off leaves no empty folders behind to be mistaken for agents later', () => {
+  // `--agent=all` then `off` left `.cursor/ .agents/ .codex/ .gemini/ .windsurf/`
+  // empty, and the next plain `nearly` read them as signs of use and wired all seven.
+  const repo = tempRepo();
+  try {
+    attach(repo, '--agent=all');
+    attach(repo, '--off');
+    for (const d of ['.cursor', '.agents', '.codex', '.gemini', '.windsurf', join('.github', 'hooks'), '.claude']) {
+      assert.equal(existsSync(join(repo, d)), false, `${d} was left behind`);
+    }
+    const r = attach(repo);
+    assert.doesNotMatch(r.stdout, /Cursor|Antigravity|Codex|Gemini|Windsurf/, 'leftovers made it wire other agents');
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('flags work with a space as well as an equals sign', () => {
+  // `nearly --agent cursor` read "cursor" as the repo and said it was not a repository.
+  const repo = tempRepo();
+  try {
+    const r = attach(repo, '--agent', 'cursor', '--name', 'my-app');
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(existsSync(join(repo, '.cursor', 'hooks.json')), '--agent cursor was not honoured');
+    assert.match(readFileSync(join(repo, '.cursor', 'hooks.json'), 'utf8'), /my-app/, '--name my-app was not honoured');
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('it can be turned on from a subfolder of the repo', () => {
+  // It looked for .git in the current folder only, so every subfolder was "not a repository".
+  const repo = tempRepo();
+  try {
+    const sub = join(repo, 'src', 'lib');
+    mkdirSync(sub, { recursive: true });
+    const r = attach(sub);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(existsSync(join(repo, '.claude', 'settings.local.json')), 'hooks were not written at the repo root');
+    assert.equal(existsSync(join(sub, '.claude')), false, 'hooks were written into the subfolder');
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('a server of the same version, or newer, is kept rather than replaced', async () => {
+  // It compared install folders, so a second npx run closed a live server of the
+  // same version — and an old pinned hook would have downgraded a newer one.
+  const { keep } = await import('../server/reclaim.mjs');
+  assert.equal(keep('0.1.15', '0.1.15'), true, 'same version from another folder was replaced');
+  assert.equal(keep('0.1.16', '0.1.15'), true, 'a newer server would be downgraded');
+  assert.equal(keep('0.1.10', '0.1.15'), false, 'an older server was kept');
+  assert.equal(keep('0.2.0', '0.1.99'), true);
+  assert.equal(keep(undefined, '0.1.15'), false, 'a server too old to say its version was kept');
+});
+
+test('doctor does not pass a hook that only works because npx is running', () => {
+  // Launched through npx, doctor's probe found npx's temporary `nearly` on PATH.
+  // The agent's shell has no such thing, so the hook would never run.
+  if (process.platform === 'win32') return;
+  const repo = tempRepo();
+  const fakeNpx = mkdtempSync(join(tmpdir(), '_npx-'));
+  const bin = join(fakeNpx, '_npx', 'abc', 'node_modules', '.bin');
+  try {
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'nearly'), '#!/bin/sh\necho \'{"hookSpecificOutput":{"permissionDecision":"allow"}}\'\n', { mode: 0o755 });
+    const file = join(repo, '.claude', 'settings.local.json');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'nearly hook pre-tool app' }] }] } }));
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'doctor.mjs'), repo],
+      // Only npx's bin and the system basics, so a `nearly` installed elsewhere on
+      // the machine running the tests cannot make this pass for the wrong reason.
+      { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, NO_COLOR: '1' } });
+    assert.match(r.stdout, /✗ hooks actually fire/, 'doctor passed a hook that only runs inside npx');
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(fakeNpx, { recursive: true, force: true });
+  }
 });

@@ -63,7 +63,8 @@ export function installed() {
 //   --agent=cursor,gemini   exactly these
 //   --agent=all             every adapter there is
 export function choose(repo, argv = []) {
-  const flag = argv.find((a) => a.startsWith('--agent='));
+  const at = argv.indexOf('--agent');
+  const flag = argv.find((a) => a.startsWith('--agent=')) ?? (at !== -1 && argv[at + 1] ? `--agent=${argv[at + 1]}` : undefined);
   if (flag) {
     const want = flag.slice('--agent='.length).split(',').map((s) => s.trim()).filter(Boolean);
     if (want.includes('all')) return { chosen: ADAPTERS, unknown: [] };

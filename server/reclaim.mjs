@@ -70,10 +70,30 @@ const freed = async (base) => (await identify(base)) === null;
 //   'stood-down'  it exited when asked (0.1.8 and later)
 //   'ended'     older build, idle, so we closed it
 //   'stuck'     ours by every test, but we could not end it
-export async function reclaim({ port, base, root, kill = process.kill.bind(process) }) {
+const parts = (v) => String(v || '').split('-')[0].split('.').map(Number);
+function newer(a, b) {
+  const x = parts(a), y = parts(b);
+  if (x.some(Number.isNaN) || y.some(Number.isNaN)) return false;
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+
+// Whether the server on the port is good enough to keep: this build, the same
+// version run from somewhere else, or a newer one.
+//
+// This used to compare install folders. A second `npx nearly-cli` never shares a
+// folder with the runtime install, so it closed a server with live sessions and
+// announced that it had closed "an older" one. And an old hook pinned to a past
+// release would have replaced a newer server with itself.
+export function keep(serverVersion, ourVersion) {
+  if (!serverVersion || !ourVersion) return false;
+  return serverVersion === ourVersion || newer(serverVersion, ourVersion);
+}
+
+export async function reclaim({ port, base, root, version, kill = process.kill.bind(process) }) {
   const who = await identify(base);
   if (!who) return { outcome: 'free' };
-  if (who.root && who.root === root) return { outcome: 'ours', who };
+  if ((who.root && who.root === root) || keep(who.version, version)) return { outcome: 'ours', who };
   if (who.waiting > 0) return { outcome: 'busy', who };
 
   // The polite path. A build that understands this will refuse if it is busy.

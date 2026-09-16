@@ -1,7 +1,7 @@
 // Install a git pre-push hook that builds the branch's session record and
 // offers to post it to the pull request.
 //
-//   node scripts/install-push-hook.mjs <repo-path> [--remove]
+//   node scripts/install-push-hook.mjs <repo-path> [--cmd "<how to run nearly>"] [--remove]
 //
 // Pushing is the moment your work stops being yours and becomes someone else's
 // to review, so it is the right moment to hand over the record. The hook:
@@ -22,7 +22,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const argv = process.argv.slice(2);
-const repo = resolve(argv.find((a) => !a.startsWith('--')) || '.');
+const cmdAt = argv.indexOf('--cmd');
+// How the hook runs Nearly. attach passes the same command it wrote into the
+// agent hooks, so both survive the same things. The default — this file's own
+// folder — is only right for a checkout: run through npx it was the npx cache,
+// and once npm cleared that every push printed a stack trace while doctor went
+// on reporting the hook as installed.
+const RUN = cmdAt !== -1 && argv[cmdAt + 1] ? argv[cmdAt + 1] : `node ${JSON.stringify(join(root, 'bin', 'nearly.mjs'))}`;
+const repo = resolve(argv.find((a, i) => !a.startsWith('--') && i !== cmdAt + 1) || '.');
 const remove = argv.includes('--remove');
 
 if (!existsSync(join(repo, '.git'))) {
@@ -35,24 +42,36 @@ const MARKER = 'x-session-record-hook';
 const hooksDir = join(repo, '.git', 'hooks');
 const hookPath = join(hooksDir, 'pre-push');
 
+// Ours by the marker, or by the exact comment older versions wrote. Matching the
+// word "nearly" anywhere claimed any hook that happened to mention it.
+const ours = (text) => text.includes(MARKER) || /^# (control-room|nearly): hand the session record/m.test(text);
+
 if (remove) {
-  if (existsSync(hookPath)) { rmSync(hookPath); console.log(`Removed ${hookPath}`); }
-  else console.log('No pre-push hook to remove.');
+  if (!existsSync(hookPath)) { console.log('No pre-push hook to remove.'); process.exit(0); }
+  // Installing refused to overwrite someone else's hook; removing used to delete
+  // it anyway, and said "removed" while doing so.
+  if (!ours(readFileSync(hookPath, 'utf8'))) {
+    console.error(`${hookPath} was not written by Nearly, so it was left alone.`);
+    process.exit(1);
+  }
+  rmSync(hookPath);
+  console.log(`Removed ${hookPath}`);
   process.exit(0);
 }
 
 if (existsSync(hookPath)) {
   const existing = readFileSync(hookPath, 'utf8');
-  // Recognise it by a marker that does not change when the product is renamed,
-  // and still recognise hooks written before this file existed.
-  const mine = existing.includes(MARKER) || /control-room|nearly/.test(existing);
+  const mine = ours(existing);
   if (!mine) {
     console.error(`${hookPath} already exists and was not written by the Nearly.`);
     console.error('Refusing to overwrite it. Move it aside, or add this line to it yourself:');
-    console.error(`  node ${join(root, 'scripts', 'push-record.mjs')} "${repo}" || true`);
+    console.error(`  ${RUN} push-record "${repo}" || true`);
     process.exit(1);
   }
 }
+
+// Safe inside the double quotes of a sh script.
+const shq = (s) => String(s).replace(/[\\"$`]/g, '\\$&');
 
 mkdirSync(hooksDir, { recursive: true });
 writeFileSync(hookPath, `#!/bin/sh
@@ -69,11 +88,10 @@ writeFileSync(hookPath, `#!/bin/sh
 # ENXIO, when no terminal is attached. The open has to happen inside a subshell
 # too: a failed redirection is reported by the shell itself, so redirecting the
 # command's stderr does not silence it, but redirecting the subshell's does.
-CR="${join(root, 'scripts', 'push-record.mjs')}"
 if (: >/dev/tty) 2>/dev/null; then
-  node "$CR" "${repo}" </dev/tty >/dev/tty 2>&1 || true
+  ${RUN} push-record "${shq(repo)}" </dev/tty >/dev/tty 2>&1 || true
 else
-  NEARLY_NO_TTY=1 node "$CR" "${repo}" || true
+  NEARLY_NO_TTY=1 ${RUN} push-record "${shq(repo)}" || true
 fi
 exit 0
 `);

@@ -75,7 +75,13 @@ function git(dir, args, gitDir) {
   } catch { return null; }
 }
 
-const real = (p) => { try { return realpathSync(p); } catch { return null; } };
+// The native realpath: on Windows it expands 8.3 short names (RUNNER~1) to the
+// long ones git reports. Without it the same folder had two spellings, nothing
+// was ever "inside the repo" there, and ordinary deletes were refused while
+// `rm -rf .git` was let through.
+const real = (p) => {
+  try { return realpathSync.native(p); } catch { try { return realpathSync(p); } catch { return null; } }
+};
 const lstatSafe = (p) => { try { return lstatSync(p); } catch { return null; } };
 
 // The deepest part of a path that exists, resolved through symlinks, with the
@@ -162,14 +168,24 @@ function lex(src) {
     if (c === '"') {
       word(); i++;
       while (i < src.length && src[i] !== '"') {
-        if (src[i] === '\\' && i + 1 < src.length) { w.v += src[i + 1]; i += 2; continue; }
+        // Inside double quotes a backslash escapes only $ ` " \\ and newline.
+        if (src[i] === '\\' && i + 1 < src.length && /[$`"\\\n]/.test(src[i + 1])) { w.v += src[i + 1]; i += 2; continue; }
         if (src[i] === '$' && src[i + 1] === '(') { const [body, end] = balanced(src, i + 1); w.subs.push(body); w.v += `$(${body})`; i = end; continue; }
         if (src[i] === '`') { const j = src.indexOf('`', i + 1), end = j === -1 ? src.length : j; w.subs.push(src.slice(i + 1, end)); w.v += `\`${src.slice(i + 1, end)}\``; i = end + 1; continue; }
         w.v += src[i]; i++;
       }
       i++; continue;
     }
-    if (c === '\\' && i + 1 < src.length) { word().v += src[i + 1]; i += 2; continue; }
+    if (c === '\\' && i + 1 < src.length) {
+      // A backslash either escapes, as in `\\rm` or `my\\ folder`, or is a
+      // Windows path separator, as in `C:\\Users`. Treating every one as an
+      // escape turned `C:\\Users` into `C:Users`, and let `rmdir /s C:\\Users`
+      // through on the one platform where it runs.
+      const mid = !!(w && w.v.length);
+      if (mid && !/[\s;&|<>()$`"'\\]/.test(n)) { word().v += c; i++; continue; }
+      if (!mid && n === '\\' && /[A-Za-z0-9._-]/.test(src[i + 2] || '')) { word().v += '\\\\'; i += 2; continue; }
+      word().v += n; i += 2; continue;
+    }
     if (c === '$' && n === '(') { const [body, end] = balanced(src, i + 1); word().subs.push(body); w.v += `$(${body})`; i = end; continue; }
     if (c === '`') { const j = src.indexOf('`', i + 1), end = j === -1 ? src.length : j; word().subs.push(src.slice(i + 1, end)); w.v += `\`${src.slice(i + 1, end)}\``; i = end + 1; continue; }
     word().v += c; i++;

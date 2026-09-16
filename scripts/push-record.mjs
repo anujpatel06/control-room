@@ -30,9 +30,11 @@ const URL_BASE = (process.env.NEARLY_URL_BASE || configured() || '').replace(/\/
 // wait at a push. Opt in with NEARLY_AUDIO=1 when you are making the good one.
 const WANT_AUDIO = process.env.NEARLY_AUDIO === '1';
 
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-const red = (s) => `\x1b[31m${s}\x1b[0m`;
+// Colour only on a terminal; piped into a file or a CI log it is noise.
+const COLOR = !!process.stdout.isTTY && !process.env.NO_COLOR;
+const dim = (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : String(s));
+const bold = (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : String(s));
+const red = (s) => (COLOR ? `\x1b[31m${s}\x1b[0m` : String(s));
 
 function bail(msg) { if (msg) console.error(dim(`nearly: ${msg}`)); process.exit(0); }
 

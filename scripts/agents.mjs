@@ -11,12 +11,14 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { ADAPTERS } from '../server/adapters.mjs';
+import { ADAPTERS, OURS_RE } from '../server/adapters.mjs';
 import { detect, installed } from './detect.mjs';
 
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-const ok = (s) => `\x1b[32m${s}\x1b[0m`;
+// Colour only on a terminal; piped into a file or a CI log it is noise.
+const COLOR = !!process.stdout.isTTY && !process.env.NO_COLOR;
+const dim = (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : String(s));
+const bold = (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : String(s));
+const ok = (s) => (COLOR ? `\x1b[32m${s}\x1b[0m` : String(s));
 
 const repo = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || process.cwd());
 const here = new Set(detect(repo).map((d) => d.id));
@@ -28,7 +30,7 @@ const machine = new Set(installed().map((d) => d.id));
 const gated = (a) => {
   const f = join(repo, a.config);
   if (!existsSync(f)) return false;
-  try { return /nearly/i.test(readFileSync(f, 'utf8')); } catch { return false; }
+  try { return OURS_RE.test(readFileSync(f, 'utf8')); } catch { return false; }
 };
 
 const width = Math.max(...ADAPTERS.map((a) => a.name.length));
@@ -40,7 +42,9 @@ console.log('');
 for (const a of ADAPTERS) {
   const on = gated(a);
   const mark = on ? ok('●') : dim('○');
-  const state = on ? 'gated here' : here.has(a.id) ? 'used here, not gated' : machine.has(a.id) ? 'installed, unused here' : 'not in use here';
+  // "Wired", not "gated": a hook being in the config says nothing about whether
+  // it runs. `nearly doctor` fires one to find out.
+  const state = on ? 'wired here' : here.has(a.id) ? 'used here, not wired' : machine.has(a.id) ? 'installed, unused here' : 'not in use here';
   console.log(`  ${mark} ${bold(pad(a.name))}  ${pad2(state)} ${dim(a.config)}`);
 }
 function pad2(s) { return s + ' '.repeat(Math.max(0, 22 - s.length)); }
