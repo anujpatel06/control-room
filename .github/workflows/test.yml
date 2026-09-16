@@ -13,6 +13,9 @@ jobs:
   test:
     name: ${{ matrix.os }} · node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
+    # A macOS runner once sat in this job for two hours doing nothing; a rerun
+    # finished in minutes. Fail fast instead of waiting that out again.
+    timeout-minutes: 20
     strategy:
       fail-fast: false        # one platform failing must not hide the others
       matrix:
