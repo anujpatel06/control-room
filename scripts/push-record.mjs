@@ -91,7 +91,7 @@ console.log('');
 // hear about a fix.
 try {
   const { checkForUpdate, applyUpdate } = await import('./update-check.mjs');
-  applyUpdate(await checkForUpdate());
+  applyUpdate(await checkForUpdate(), { background: true });
 } catch { /* never worth failing a push over */ }
 
 // Finding the pull request needs gh. Not having it and not having a pull

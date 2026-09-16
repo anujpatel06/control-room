@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, tmpdir } from 'node:os';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DAY = 24 * 60 * 60 * 1000;
@@ -84,7 +84,12 @@ export async function checkForUpdate() {
   } catch { return null; }
 }
 
-export function applyUpdate(u) {
+// `background` is for the push path. An update installing in the foreground
+// held `git push` for up to two minutes, and a push that hangs reads as a push
+// that is broken — which is a strange thing for a tool that must never block a
+// push to do. Commands a person typed and is watching still install in front
+// of them, because there they want to know it happened.
+export function applyUpdate(u, { background = false } = {}) {
   if (!u) return;
 
   if (u.major) {
@@ -102,9 +107,24 @@ export function applyUpdate(u) {
     return;
   }
 
+  if (background) {
+    try {
+      // Detached and forgotten: the push goes ahead now and the new version is
+      // in place by the next command. A .cmd on Windows only spawns through a
+      // shell, which is the same trap npm itself fell into here once already.
+      const child = spawn(NPM, ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
+        { detached: true, stdio: 'ignore', shell: process.platform === 'win32' });
+      child.on('error', () => { /* offline, or no permission: next time */ });
+      child.unref();
+      console.log('');
+      console.log(dim(`  Nearly ${u.to} is out (you have ${u.from}) — updating in the background.`));
+    } catch { /* never worth failing a push over */ }
+    return;
+  }
+
   process.stdout.write(dim(`  Updating Nearly ${u.from} → ${u.to}… `));
   const r = spawnSync(NPM, ['install', '-g', `${u.name}@${u.to}`, '--silent', '--no-fund', '--no-audit'],
-    { encoding: 'utf8', timeout: 120_000 });
+    { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32' });
 
   if (r.status === 0) {
     console.log('done');

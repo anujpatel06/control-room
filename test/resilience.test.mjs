@@ -383,3 +383,25 @@ test('where records publish survives an upgrade', () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('an update found during a push never makes the push wait', async () => {
+  // It used to install in the foreground, holding git push for up to two
+  // minutes. The first version of the fix also forgot to import spawn — which
+  // node --check cannot see, and a try/catch swallowed — so background updates
+  // would silently never have happened. This runs the real path.
+  //
+  // applyUpdate catches its own errors, so "did not throw" proves nothing. The
+  // notice is only printed after spawn succeeds; its absence is the failure.
+  const { applyUpdate } = await import('../scripts/update-check.mjs');
+  const said = [];
+  const log = console.log;
+  console.log = (...a) => said.push(a.join(' '));
+  const started = Date.now();
+  try {
+    applyUpdate({ name: 'nearly-cli-probe-does-not-exist', from: '0.1.0', to: '9.9.9', kind: 'global', major: false },
+      { background: true });
+  } finally { console.log = log; }
+  assert.ok(Date.now() - started < 1000, 'the push waited on the install');
+  assert.ok(said.some((l) => /updating in the background/.test(l)),
+    'the background install never started — the spawn failed and was swallowed');
+});

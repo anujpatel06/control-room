@@ -9,7 +9,10 @@
 //
 // The two claims every adapter has to make good on:
 //
-//   · `rm -rf` is refused, whatever that harness calls its shell tool
+//   · `rm -rf /` is refused, whatever that harness calls its shell tool — and
+//     refused by the rule, not by a timeout. A held call that nobody answers is
+//     also a "deny", and every one of these checks used to accept it, so five
+//     adapters passed while proving nothing about the never-rules at all.
 //   · the refusal comes back in words that harness will act on
 //
 // What these tests cannot prove is that the vendor's documentation matches the
@@ -78,45 +81,45 @@ const json = (s) => { try { return JSON.parse(s); } catch { return null; } };
 const CASES = {
   cursor: {
     id: 'conversation_id',
-    danger: (s) => ({ conversation_id: s, cwd: root, tool_name: 'run_terminal_cmd', tool_input: { command: 'rm -rf build' }, tool_use_id: 't1', workspace_roots: [root] }),
+    danger: (s) => ({ conversation_id: s, cwd: root, tool_name: 'run_terminal_cmd', tool_input: { command: 'rm -rf /' }, tool_use_id: 't1', workspace_roots: [root] }),
     safe: (s) => ({ conversation_id: s, cwd: root, tool_name: 'read_file', tool_input: { file_path: '/tmp/x' }, tool_use_id: 't2', workspace_roots: [root] }),
-    denied: (r) => json(r.out)?.permission === 'deny',
+    denied: (r) => json(r.out)?.permission === 'deny' && /never/.test(r.out),
     allowed: (r) => json(r.out)?.permission === 'allow',
   },
   antigravity: {
     id: 'conversationId',
     // The nested call and the PascalCase argument are both real, and both are
     // why a name-only tool table would have missed this command entirely.
-    danger: (s) => ({ conversationId: s, workspacePaths: [root], modelName: 'gemini-3-pro', stepIdx: 4, toolCall: { name: 'run_command', args: { CommandLine: 'rm -rf build' } } }),
+    danger: (s) => ({ conversationId: s, workspacePaths: [root], modelName: 'gemini-3-pro', stepIdx: 4, toolCall: { name: 'run_command', args: { CommandLine: 'rm -rf /' } } }),
     safe: (s) => ({ conversationId: s, workspacePaths: [root], modelName: 'gemini-3-pro', stepIdx: 5, toolCall: { name: 'view_file', args: { AbsolutePath: '/tmp/x' } } }),
-    denied: (r) => json(r.out)?.decision === 'deny',
+    denied: (r) => json(r.out)?.decision === 'deny' && /never/.test(r.out),
     allowed: (r) => json(r.out)?.decision === 'allow',
   },
   copilot: {
     id: 'session_id',
-    danger: (s) => ({ session_id: s, cwd: root, tool_name: 'bash', tool_input: { command: 'rm -rf build' } }),
+    danger: (s) => ({ session_id: s, cwd: root, tool_name: 'bash', tool_input: { command: 'rm -rf /' } }),
     safe: (s) => ({ session_id: s, cwd: root, tool_name: 'view', tool_input: { file_path: '/tmp/x' } }),
-    denied: (r) => json(r.out)?.permissionDecision === 'deny',
+    denied: (r) => json(r.out)?.permissionDecision === 'deny' && /never/.test(r.out),
     allowed: (r) => json(r.out)?.permissionDecision === 'allow',
   },
   codex: {
     id: 'session_id',
-    danger: (s) => ({ session_id: s, turn_id: 'turn-1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'shell', tool_input: { command: 'rm -rf build' }, tool_use_id: 'c1' }),
+    danger: (s) => ({ session_id: s, turn_id: 'turn-1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'shell', tool_input: { command: 'rm -rf /' }, tool_use_id: 'c1' }),
     safe: (s) => ({ session_id: s, turn_id: 'turn-1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'read_file', tool_input: { file_path: '/tmp/x' }, tool_use_id: 'c2' }),
-    denied: (r) => json(r.out)?.hookSpecificOutput?.permissionDecision === 'deny',
+    denied: (r) => json(r.out)?.hookSpecificOutput?.permissionDecision === 'deny' && /never/.test(r.out),
     // Codex does nothing with "allow", so silence is how a call is let through.
     allowed: (r) => r.out === '' && r.code === 0,
   },
   gemini: {
     id: 'session_id',
-    danger: (s) => ({ session_id: s, cwd: root, hook_event_name: 'BeforeTool', tool_name: 'run_shell_command', tool_input: { command: 'rm -rf build' } }),
+    danger: (s) => ({ session_id: s, cwd: root, hook_event_name: 'BeforeTool', tool_name: 'run_shell_command', tool_input: { command: 'rm -rf /' } }),
     safe: (s) => ({ session_id: s, cwd: root, hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: { absolute_path: '/tmp/x' } }),
-    denied: (r) => json(r.out)?.decision === 'deny',
+    denied: (r) => json(r.out)?.decision === 'deny' && /never/.test(r.out),
     allowed: (r) => json(r.out)?.decision === 'allow',
   },
   windsurf: {
     id: 'trajectory_id',
-    danger: (s) => ({ agent_action_name: 'pre_run_command', trajectory_id: s, execution_id: 'e1', model_name: 'swe-1', tool_info: { command_line: 'rm -rf build', cwd: root } }),
+    danger: (s) => ({ agent_action_name: 'pre_run_command', trajectory_id: s, execution_id: 'e1', model_name: 'swe-1', tool_info: { command_line: 'rm -rf /', cwd: root } }),
     safe: (s) => ({ agent_action_name: 'pre_read_code', trajectory_id: s, execution_id: 'e2', model_name: 'swe-1', tool_info: { file_path: '/tmp/x', cwd: root } }),
     // No JSON at all: Cascade reads the exit code and the reason on stderr.
     denied: (r) => r.code === 2 && /never/.test(r.err),
