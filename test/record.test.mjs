@@ -9,7 +9,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -289,5 +289,60 @@ test('a built record can actually be fetched from the server', async () => {
   } finally {
     srv.kill('SIGTERM');
     for (const d of [pages, recs]) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+// Everything in a record came from an agent. A command is text the agent chose,
+// and it ends up inside the page a reviewer opens — which, published to GitHub
+// Pages, is on a real origin. The page used `.replace(placeholder, string)`, so
+// `$\`` in a command pasted the page's own <head> into the data, broke out of
+// the script block and ran agent text as code. Reproduced before fixing: the
+// tab retitled itself.
+test('text from an agent cannot run as code in the record page', () => {
+  const hostile = [
+    'echo dollar-amp $& here',
+    'echo backtick $` here',
+    "echo quote $' here",
+    'echo </script><script>document.title="PWNED"</script>',
+    'echo <!--<script>',
+    'echo <img src=x onerror=document.title="PWNED">',
+    `echo ${String.fromCharCode(0x2028)}line${String.fromCharCode(0x2029)}sep`,
+  ];
+  const dir = mkdtempSync(join(tmpdir(), 'nearly-xss-'));
+  const recs = join(dir, 'rec'), pages = join(dir, 'pages'), story = join(dir, 'story');
+  for (const d of [recs, pages, story]) mkdirSync(d, { recursive: true });
+  const sid = 'aaaaaaaa-1111-4222-8333-444444444444';
+  let at = 1789000000000;
+  const ev = (e) => JSON.stringify({ ...e, session: sid, at: at++ });
+  const lines = [
+    ev({ type: 'session', subtype: 'created', name: 'xss', branch: 'feat/x', worktree: dir, attached: true }),
+    ev({ type: 'prompt', text: 'tidy up <b>now</b> $`' }),
+    ...hostile.map((command, i) => ev({ type: 'decision', id: `t${i}`, decision: 'deny', why: 'never (test)', scope: 'policy', tool: 'Bash', input: { command }, tier: 'never' })),
+    ev({ type: 'session', subtype: 'exited', reason: 'other' }),
+  ];
+  writeFileSync(join(recs, `${sid}.jsonl`), lines.join('\n') + '\n');
+
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'build-recap.mjs'), sid, '--no-audio'], {
+    encoding: 'utf8', timeout: 60_000,
+    env: { ...process.env, NEARLY_RECORDINGS: recs, NEARLY_OUT: pages, NEARLY_STORY: story },
+  });
+  try {
+    assert.equal(r.status, 0, `build failed: ${r.stderr}`);
+    const file = readdirSync(pages).find((f) => f.endsWith('.html'));
+    const html = readFileSync(join(pages, file), 'utf8');
+    const m = html.match(/const R = (.*);\n/);
+    assert.ok(m, 'no record data in the page');
+
+    // Nothing an HTML parser could act on survives inside the script block.
+    assert.doesNotMatch(m[1], /[<>]/, 'raw < or > inside the script block');
+    // The data parses, and every command reads exactly as the agent wrote it.
+    const R = JSON.parse(m[1]);
+    const shown = JSON.stringify(R);
+    for (const c of hostile) assert.ok(shown.includes(JSON.stringify(c).slice(1, -1)), `rewritten or lost: ${c}`);
+    // One script block closes where the template closes it, not earlier.
+    assert.equal((html.match(/<\/script>/g) || []).length, (readFileSync(join(root, 'ui', 'recap.template.html'), 'utf8').match(/<\/script>/g) || []).length,
+      'an extra </script> means agent text escaped the block');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

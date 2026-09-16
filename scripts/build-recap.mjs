@@ -660,10 +660,28 @@ const slug = BRANCH ? `${safe(sb.name)}--${safe(BRANCH)}` : `${sb.name}-${sb.id.
 const jsonPath = join(storyDirOut, `${slug}.json`);
 writeFileSync(jsonPath, JSON.stringify({ ...sb, scenes: sb.scenes.map(({ audio, ...s }) => s) }, null, 2));
 
+// Everything in a record came from an agent, so everything is hostile until
+// proven otherwise.
+//
+// This used to be `.replace('__RECAP__', json)`. With a string as the
+// replacement, JavaScript reads `$&`, `$\``, `$'` in it as instructions — so a
+// command containing `$\`` pasted the page's whole <head> into the record's
+// data, broke out of the script block, and ran text from the agent's command as
+// code in the reviewer's browser. Reproduced: the tab retitled itself. A
+// function as the replacement is taken literally.
+//
+// And inside a <script>, escaping `</script>` is not enough: `<!--` and
+// `<script` change how the HTML parser reads the block. Encoding every `<`, `>`
+// and `&` as \u escapes leaves nothing for it to act on, and JSON.parse reads
+// them back unchanged. U+2028/2029 are line terminators to older JavaScript.
+const scriptSafe = (value) => JSON.stringify(value)
+  .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+  .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const htmlSafe = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const html = readFileSync(templatePath, 'utf8')
-  .replace('__RECAP__', JSON.stringify(sb).replace(/<\/script>/gi, '<\\/script>'))
-  .replaceAll('__TITLE__', `${sb.name} · ${sb.scenes[0].title}`)
-  .replaceAll('__DESC__', `Recap of a Nearly session: ${sb.scenes[0].narration}`);
+  .replace('__RECAP__', () => scriptSafe(sb))
+  .replaceAll('__TITLE__', () => htmlSafe(`${sb.name} · ${sb.scenes[0].title}`))
+  .replaceAll('__DESC__', () => htmlSafe(`Recap of a Nearly session: ${sb.scenes[0].narration}`));
 const outPath = join(outDir, `${slug}.html`);
 writeFileSync(outPath, html);
 

@@ -12,3 +12,4 @@ ui/replay.html
 # local dev-server config
 .claude/launch.json
 repos.json
+.claude/worktrees/
