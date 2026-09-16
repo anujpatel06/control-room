@@ -13,3 +13,10 @@ ui/replay.html
 .claude/launch.json
 repos.json
 .claude/worktrees/
+
+# Records built by running Nearly inside this checkout. Only the curated demo
+# (priya-app) belongs in the repo; test sessions were being swept in by `git add -A`.
+records/*.json
+!records/priya-app*.json
+ui/records/*.html
+!ui/records/priya-app*.html
