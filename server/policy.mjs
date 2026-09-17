@@ -270,7 +270,10 @@ function expand(raw, st) {
   let s = String(raw);
   if (s === '~' || s.startsWith('~/') || s.startsWith('~\\')) s = path.join(os.homedir(), s.slice(1));
   else if (/^~[^/\\]/.test(s)) return { unknown: `another user's home directory (${raw})` };
-  const vars = { HOME: os.homedir(), USERPROFILE: os.homedir(), TMPDIR: process.env.TMPDIR || os.tmpdir(), TMP: os.tmpdir(), TEMP: os.tmpdir(), PWD: st.cwd };
+  // Variables set earlier on the same line count: `S=/tmp/scratch; rm -f $S/x`
+  // is a scratch file, and refusing it as "decided at run time" stopped real work.
+  // One set to something unknowable stays unknowable (null).
+  const vars = { HOME: os.homedir(), USERPROFILE: os.homedir(), TMPDIR: process.env.TMPDIR || os.tmpdir(), TMP: os.tmpdir(), TEMP: os.tmpdir(), PWD: st.cwd, ...(st.vars || {}) };
   s = s.replace(/\$\(\s*pwd\s*\)/g, () => st.cwd ?? '\0');
   s = s.replace(/\$\{?env:([A-Za-z_]+)\}?/gi, (_, k) => vars[k.toUpperCase()] ?? '\0');
   s = s.replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (_, k) => vars[k] ?? '\0');
@@ -742,7 +745,13 @@ function stageReason(stage, pipe, idx, st, depth) {
 
 // What a command changes for the commands after it on the same line.
 function applyState(stage, st) {
-  const { argv, prog } = unwrap(stage.words);
+  const { argv, prog, assigns } = unwrap(stage.words);
+  // `NAME=value` on its own sets a shell variable for the rest of the line. With
+  // a command after it, it only sets that command's environment, and the shell
+  // has already expanded the line by then — so it changes nothing here.
+  const remember = (k, v) => { const x = expand(v, st); (st.vars ||= {})[k] = x.path ?? null; };
+  if (!prog) { for (const [k, v] of Object.entries(assigns)) remember(k, v); return; }
+  if (prog === 'unset') { for (const a of argv.slice(1)) if (st.vars) delete st.vars[a]; return; }
   if (['cd', 'pushd', 'set-location', 'sl', 'chdir'].includes(prog)) {
     const target = argv.slice(1).find((a) => !a.startsWith('-'));
     if (!target) { st.cwd = os.homedir(); return; }
@@ -753,7 +762,12 @@ function applyState(stage, st) {
   }
   if (prog === 'popd') { st.cwd = null; return; }
   if (prog === 'export') {
-    for (const a of argv.slice(1)) { const m = a.match(/^GIT_DIR=(.*)$/); if (m) st.gitDir = m[1]; }
+    for (const a of argv.slice(1)) {
+      const m = a.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!m) continue;
+      if (m[1] === 'GIT_DIR') st.gitDir = m[2];
+      remember(m[1], m[2]);
+    }
     return;
   }
   if (prog !== 'git') return;
@@ -795,7 +809,7 @@ function analyze(src, st, depth = 0) {
 function stateFor(cwd) {
   const dir = cwd ? (real(cwd) || cwd) : null;
   const top = dir ? git(dir, ['rev-parse', '--show-toplevel']) : null;
-  return { cwd: dir, root: top ? (real(top) || top) : null, branch: null, gitDir: null, aliases: {} };
+  return { cwd: dir, root: top ? (real(top) || top) : null, branch: null, gitDir: null, aliases: {}, vars: {} };
 }
 
 // The reason a command must never run, or null. Exported for the tests, which

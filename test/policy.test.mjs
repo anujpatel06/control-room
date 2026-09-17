@@ -172,6 +172,9 @@ const ORDINARY = [
   'rm -rf .git/hooks/pre-commit.sample', 'rm .git/index.lock', 'cd src && rm -rf ../dist',
   'find . -name "*.pyc" -delete', 'find . -name "*.pyc" | xargs rm -f', 'git ls-files -d | xargs rm', 'rm -rf link',
   'find . -name node_modules -type d -exec rm -rf {} +',
+  // a variable set earlier on the same line, pointing at scratch space — refused in a real session
+  `S=${TMP_CACHE}; cd $S && ffmpeg -i in.mp4 ref.y4m; rm -f ref.y4m`, `S=${TMP_CACHE}; cp $S/a.mp4 out.mp4 && rm -f $S/ref.y4m`,
+  `SRC="$HOME/Downloads/a.mp4"; ffmpeg -i "$SRC" out.mp4`, `export OUT=${TMP_CACHE} && rm -rf $OUT/frames`,
   // .env, judged by what it exposes rather than by its name
   'cat .env.example', 'cp .env.example .env', '[ -f .env ] || cp .env.example .env', 'test -f .env', 'ls .env', 'stat .env',
   'echo .env >> .gitignore', 'chmod 644 .env', 'vim .env', 'code .env', 'docker compose --env-file .env up',
@@ -188,7 +191,8 @@ const ORDINARY = [
 const DESTRUCTIVE = [
   // rm, however it is spelled
   'rm -rf /', 'rm -rf ~', 'rm -rf ~/projects', 'rm -rf ..', 'rm -rf ../other-repo', 'rm -rf *', 'rm -rf .', 'rm -rf .git',
-  'rm -rf $BUILD_DIR', 'rm -rf /usr/local', '\\rm -rf ~', '/bin/rm -rf ~', 'command rm -rf ~', 'rm -r -f ~',
+  'rm -rf $BUILD_DIR', 'S=~; rm -rf $S', 'D=/; rm -rf "$D"', 'S=/tmp/x; S=$HOME; rm -rf $S', 'export S=~ && rm -rf $S/Documents',
+  'S=$(pwd)/..; rm -rf $S', 'S=/tmp/x; unset S; rm -rf $S', 'S=/tmp/x rm -rf $S', 'rm -rf /usr/local', '\\rm -rf ~', '/bin/rm -rf ~', 'command rm -rf ~', 'rm -r -f ~',
   'rm --recursive --force ~', 'rm -rf ~root', 'rm -rf ~-', 'rm -rf .[!.]*', 'rm -rf .?*', 'rm -rf {a,..}', 'rm -rf **',
   'rm -rf */', 'rm -rf ./**', 'npx rimraf ~/x', 'rimraf ~', `rm -rf ${tmpdir()}`,
   // cd moves where the next command lands
