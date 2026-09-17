@@ -37,7 +37,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const flag = args.find((a) => a.startsWith('--adapter='));
 const positional = args.filter((a) => !a.startsWith('--'));
-const [event, name = 'repo'] = positional;
+const [event] = positional;
+let name = positional[1] || 'repo';
 if (!event) process.exit(0);
 
 // An unknown id is a typo in a config file, not a reason to wedge the agent.
@@ -45,7 +46,9 @@ const adapter = flag ? byId(flag.slice('--adapter='.length)) : null;
 // Nobody is at the keyboard. Set by attach --auto, carried per repo rather than
 // as machine-wide state, because supervising one project and not another is the
 // normal case.
-const unattended = args.includes('--auto');
+let unattended = args.includes('--auto');
+// Written into Claude Code's user settings rather than a repo's: see outside.mjs.
+const outside = args.includes('--outside');
 
 const body = await new Promise((r) => {
   let s = '';
@@ -87,6 +90,28 @@ async function start() {
   return false;
 }
 
+// A session opened somewhere else. Decide whether this call is any of our
+// business before doing anything that costs more than reading a few small files.
+// Nothing goes to a server unless the answer is yes.
+let extra = '';
+if (outside) {
+  let hook = {};
+  try { hook = JSON.parse(body || '{}'); } catch { /* nothing to go on */ }
+  const { attachedRepos, concerns, launchedIn, rememberedRepo } = await import('./outside.mjs');
+  const repos = attachedRepos();
+  if (!repos.length) process.exit(0);
+  // Started in one of them: its own hooks are running, and answering twice would
+  // record every call twice. A subfolder is not certain to load them, so there
+  // both fire and the server keeps whichever arrives first.
+  if (repos.some((r) => r.real === launchedIn(hook))) process.exit(0);
+  const hit = ((event === 'pre-tool' || event === 'post-tool') ? concerns(hook, repos) : null)
+    || rememberedRepo(hook.session_id, repos);
+  if (!hit) process.exit(0);
+  name = hit.name;
+  unattended = hit.auto;
+  extra = `&outside=1&repo=${encodeURIComponent(hit.repo)}`;
+}
+
 let health = await up();
 if (health === 'stale') {
   // Take the port back rather than run whatever is already there. Nobody reads
@@ -118,7 +143,7 @@ if (adapter && adapter.normalize) {
 try {
   const hold = adapter?.holdMs ? `&hold=${adapter.holdMs}` : '';
   const auto = unattended ? '&auto=1' : '';
-  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}${auto}`, {
+  const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}${auto}${extra}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: payload,

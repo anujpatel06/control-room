@@ -146,8 +146,10 @@ npx nearly-cli
 
   · Claude Code sessions here are gated and recorded (run end to end against a live agent)
   · Cursor sessions here are gated and recorded (built to their published hook spec, not yet run against a live agent)
+  · Claude Code sessions opened in another folder are gated too, once they work in this repo
+  · restart any Claude Code or Cursor session already open — hooks are read when a session starts
   · upgrades reach this repo automatically
-  · the record is offered when you push
+  · the record is added to #12 on your next push — sessions from now on
 
   Now just work. Requests that need you appear at http://127.0.0.1:47653
   Nothing to leave running. Turn it off again with --off.
@@ -158,6 +160,25 @@ Nothing to configure, no server to start, and `nearly off` removes all of it.
 
 Run it again in any other repo you want recorded. After the first time the
 command is just `nearly`.
+
+Three things that are easy to miss, and that the command now says out loud:
+
+- **Only sessions from now on.** A session already open keeps the hooks it
+  started with, which here means none. Restart it.
+- **The record reaches a pull request on a push.** Turning Nearly on for a branch
+  whose pull request already exists changes nothing on that pull request until
+  you push again. If that pull request is already merged, open a new one.
+- **Sessions opened somewhere else are covered.** Claude Code only reads a repo's
+  hooks for a session started in that repo, so a session opened one folder up —
+  a parent folder, a monorepo root, your home directory — used to edit the repo
+  with nothing gated and nothing recorded, while `nearly doctor` said all was
+  well. `nearly` now also adds one hook to Claude Code's user settings
+  (`~/.claude/settings.json`). It stays silent unless a call works in a repo
+  Nearly is on for; from then on that session is gated like one started there,
+  including calls that never mention the repo. Sessions that have nothing to do
+  with it pay a process start per tool call and never reach a server. It is
+  removed when you turn Nearly off for the last repo, and `nearly --local-only`
+  skips it.
 
 ### Where it installs
 
@@ -472,6 +493,7 @@ The claim this project makes is testable: a reviewer who sees the session record
 - `server/index.mjs`, spawn sessions, hooks, policy, recorder, undo
 - `ui/index.html`, sessions, triage of pending approvals, rules, log
 - `scripts/attach.mjs`, install or remove the hooks in a repo of your own; `scripts/post-recap.mjs`, comment the recap on its PR
+- `scripts/outside.mjs`, the hook in Claude Code's user settings that gates sessions opened in another folder
 - `scripts/build-recap.mjs` + `ui/recap.template.html`, narrated recap page per session
 - `scripts/publish-pages.mjs`, build the `docs/` folder GitHub Pages serves
 - `scripts/install-push-hook.mjs` + `scripts/push-record.mjs`, hand the branch record over at `git push`

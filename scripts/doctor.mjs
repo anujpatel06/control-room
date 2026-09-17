@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { paths, dataRoot } from '../server/paths.mjs';
 import { ADAPTERS, OURS_RE } from '../server/adapters.mjs';
+import { outsideInstalled } from './outside.mjs';
+import { prForBranch } from './pr-state.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const repo = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || process.cwd());
@@ -122,6 +124,13 @@ if (gated.length) {
   }
 }
 
+// A repo's own hooks only run for sessions started in it. Everything above can
+// be green while every session is opened one folder up and none of it is seen.
+if (gated.some((a) => a.id === 'claude-code')) {
+  if (outsideInstalled()) say(true, 'sessions opened in other folders', 'gated once they work in this repo');
+  else say(null, 'sessions opened in other folders', 'not gated — only Claude Code sessions started in this folder are. Run `nearly` here to cover them');
+}
+
 // 3 — the server, and whether it is this build
 let health = null;
 try {
@@ -207,14 +216,11 @@ if (!ghOk) {
   const auth = spawnSync('gh', ['auth', 'status'], { encoding: 'utf8' }).status === 0;
   say(auth, 'GitHub CLI (gh)', auth ? 'installed and signed in' : 'installed but not signed in', 'run `gh auth login`');
   if (auth) {
-    const pr = spawnSync('gh', ['pr', 'view', '--json', 'number,url'], { cwd: repo, encoding: 'utf8' });
-    if (pr.status === 0) {
-      let url = '';
-      try { url = JSON.parse(pr.stdout).url; } catch { /* keep it blank */ }
-      say(true, 'open pull request', url);
-    } else {
-      say(null, 'open pull request', `none for ${branch} — raise one, then push again`);
-    }
+    const pr = prForBranch(repo);
+    if (pr.state === 'open') say(true, 'open pull request', pr.url);
+    else if (pr.state === 'merged' || pr.state === 'closed') {
+      say(null, 'open pull request', `none — #${pr.number} for ${branch} is ${pr.state}. Open a new one, then push again`);
+    } else say(null, 'open pull request', `none for ${branch} — raise one, then push again`);
   }
 }
 

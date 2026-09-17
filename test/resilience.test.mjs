@@ -14,6 +14,12 @@ import { pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// attach writes a hook into Claude Code's user settings, and prefers a runtime
+// install in ~/.nearly when one exists. A test run must touch neither of the real
+// ones, and must exercise this checkout rather than whatever is installed.
+process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'nearly-claude-config-'));
+process.env.NEARLY_HOME = mkdtempSync(join(tmpdir(), 'nearly-home-'));
+
 // attach remembers the repos it is turned on for, so the dashboard can offer
 // them. A test run must not add a dozen temporary directories to that list.
 const sandboxed = () => ({ ...process.env, NEARLY_REPOS: join(tmpdir(), `nearly-test-repos-${process.pid}.json`) });

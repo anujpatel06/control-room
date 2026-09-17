@@ -13,6 +13,8 @@
 //   · a git pre-push hook, so the record is offered when the work leaves your
 //     machine
 //   · where the records are published, read from the Nearly's own remote
+//   · one hook in Claude Code's user settings, so a session opened in another
+//     folder is gated when it works in this repo (--local-only to skip it)
 //
 // There is no server to remember. The hooks start it the first time they need
 // it, and if it cannot start, Claude Code falls back to its own prompts and
@@ -26,6 +28,8 @@ import { dataRoot, paths } from '../server/paths.mjs';
 import { choose, installed as agentsOnMachine } from './detect.mjs';
 import { installRuntime, hasRuntime, isRuntime, runtimeCommand } from './runtime.mjs';
 import { ADAPTERS } from '../server/adapters.mjs';
+import { installOutside, removeOutside, attachedRepos, userSettingsFile } from './outside.mjs';
+import { prForBranch } from './pr-state.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
@@ -146,6 +150,7 @@ const off = argv.includes('--off') || argv.includes('--detach');
 // Now the never-rules block with nobody present, everything else is done and
 // recorded, and holding for approval is something you turn on while watching.
 const supervise = argv.includes('--supervise');
+const localOnly = argv.includes('--local-only');
 const auto = !supervise;
 // The repo is wherever git says its top is. Looking only for a .git folder in
 // the current directory rejected every subfolder, which is where people usually
@@ -260,6 +265,24 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// Sessions opened in another folder
+// ---------------------------------------------------------------------------
+// Claude Code only reads this repo's hooks when a session starts here. The hook
+// in its user settings covers the rest, and stays only while some repo still
+// has Nearly on. Never from a pinned npx call: that would put a registry lookup
+// in front of every tool call in every session on the machine.
+let reach = null;
+const claudeWired = wired.some((a) => a.id === 'claude-code');
+if (!off && claudeWired && !localOnly && (installed || runtime || !fromPackage)) {
+  try {
+    reach = installOutside((ev) => hookCmd(ev));
+    if (reach.error) { notes.push(`sessions opened in other folders are not covered: ${reach.error}`); reach = null; }
+  } catch (e) { notes.push(`sessions opened in other folders are not covered: ${e.message}`); }
+} else if (off || localOnly) {
+  try { if (!attachedRepos().length) removeOutside(); } catch { /* leave it: it answers nothing without repos */ }
+}
+
+// ---------------------------------------------------------------------------
 // A server from somewhere else, already holding the port
 // ---------------------------------------------------------------------------
 // The server outlives the run that starts it. So a single `npx nearly-cli`, or
@@ -347,6 +370,7 @@ if (off) {
     ? `  hooks removed: ${wired.map((a) => a.name).join(', ')}`
     : '  no agent hooks of ours were installed');
   console.log(push.status === 0 ? '  pre-push hook removed' : dim('  pre-push hook was not ours, left alone'));
+  console.log(dim('  restart any agent session open here; it keeps the hooks it started with'));
   console.log('');
   process.exit(0);
 }
@@ -364,9 +388,30 @@ for (const a of wired) {
   const how = a.verified ? dim(`(${a.verified})`) : dim('(built to their published hook spec, not yet run against a live agent)');
   console.log(`  ${ok('·')} ${a.name} sessions here are gated and recorded ${how}`);
 }
+if (reach) {
+  console.log(`  ${ok('·')} Claude Code sessions opened in another folder are gated too, once they work in this repo`);
+  console.log(`    ${dim(`a hook in ${userSettingsFile().replace(process.env.HOME || '~', '~')}; it stays silent everywhere else`)}`);
+} else if (claudeWired && !off) {
+  console.log(`  ${ok('·')} ${dim('only Claude Code sessions started in this folder are gated')}`);
+}
+// Hooks are read when a session starts. Someone who turns this on and carries on
+// in the window they already had is not gated at all, and nothing says so.
+if (wired.length) {
+  console.log(`  ${bold('·')} ${bold(`restart any ${wired.map((a) => a.name).join(' or ')} session already open`)} ${dim('— hooks are read when a session starts')}`);
+}
 console.log(`  ${ok('·')} ${dim(updateNote())}`);
 if (push.status === 0) {
-  console.log(`  ${ok('·')} the record is offered when you push`);
+  // Only sessions from now on are recorded, and the record reaches a pull
+  // request on a push. Said here, because the natural thing is to look at a pull
+  // request that already exists and wonder where the record is.
+  const pr = prForBranch(repo);
+  if (pr.state === 'open') {
+    console.log(`  ${ok('·')} the record is added to #${pr.number} on your next push ${dim('— sessions from now on')}`);
+  } else if (pr.state === 'merged' || pr.state === 'closed') {
+    console.log(`  ${ok('·')} the record is offered on your next push ${dim(`— #${pr.number} for this branch is ${pr.state}, so open a new pull request first`)}`);
+  } else {
+    console.log(`  ${ok('·')} the record is offered on your next push ${dim('— sessions from now on, once a pull request is open')}`);
+  }
 } else {
   // All of it: when a pre-push hook of yours is already there, the lines after
   // the first are the ones that say how to add Nearly to it by hand.

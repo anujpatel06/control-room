@@ -60,4 +60,7 @@ export const paths = {
   // with no link. Same lesson as recordings — anything a person configured
   // belongs in their space, not in ours.
   config: () => dataFile('NEARLY_CONFIG', 'config.json'),
+  // Claude Code sessions opened outside a repo that have been gated in it, so the
+  // hook can keep gating them without asking the server. See scripts/outside.mjs.
+  outside: () => process.env.NEARLY_OUTSIDE || join(dataRoot, 'outside'),
 };

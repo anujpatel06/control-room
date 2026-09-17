@@ -108,16 +108,20 @@ if (!hasGh) {
   console.log('');
   process.exit(0);
 }
-const pr = spawnSync('gh', ['pr', 'view', '--json', 'number,url'], { cwd: repo, encoding: 'utf8' });
-if (pr.status !== 0) {
-  const why = /not logged|authentication|gh auth/i.test(pr.stderr || '')
+const { prForBranch } = await import('./pr-state.mjs');
+const pr = prForBranch(repo);
+if (pr.state !== 'open') {
+  const why = pr.state === 'signed-out'
     ? 'gh is installed but not signed in. Run `gh auth login`, then push again.'
-    : 'No open pull request for this branch yet. Raise one, then push again to attach the record.';
+    : pr.state === 'merged' || pr.state === 'closed'
+      // Posting onto a finished conversation reaches nobody who is reviewing.
+      ? `The pull request for this branch, #${pr.number}, is already ${pr.state}. Open a new one, then push again to attach the record.`
+      : 'No open pull request for this branch yet. Raise one, then push again to attach the record.';
   console.log(dim(`  ${why}`));
   console.log('');
   process.exit(0);
 }
-const prUrl = (() => { try { return JSON.parse(pr.stdout).url; } catch { return null; } })();
+const prUrl = pr.url || null;
 
 if (process.env.NEARLY_NO_TTY === '1' || !process.stdin.isTTY) {
   console.log(dim('  No terminal to ask on, so nothing was posted.'));

@@ -20,3 +20,4 @@ records/*.json
 !records/priya-app*.json
 ui/records/*.html
 !ui/records/priya-app*.html
+outside/

@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_TIER, ruleKey, classify as classifyWith } from './policy.mjs';
 import { paths } from './paths.mjs';
+import { rememberOutside } from './marks.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.NEARLY_PORT || 47653);
@@ -242,6 +243,24 @@ function modelFromTranscript(p) {
   return null;
 }
 
+// The most recent thing the person typed, from a Claude Code transcript.
+function promptFromTranscript(p) {
+  if (!p || !fs.existsSync(p)) return null;
+  try {
+    let last = null;
+    for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
+      if (!l) continue;
+      let j; try { j = JSON.parse(l); } catch { continue; }
+      if (j.type !== 'user' || j.isMeta) continue;
+      const c = j.message?.content;
+      const text = typeof c === 'string' ? c
+        : Array.isArray(c) && !c.some((x) => x?.type === 'tool_result') ? c.filter((x) => x?.type === 'text').map((x) => x.text).join('\n') : '';
+      if (text && !/^<(?:command-|local-command|system-reminder)/.test(text.trim())) last = text;
+    }
+    return last;
+  } catch { return null; }
+}
+
 function turnDiff(cwd, base, maxLines = 200) {
   const from = base || 'HEAD';
   const numstat = git(cwd, ['diff', '--numstat', from]);
@@ -357,6 +376,8 @@ function decide(sid, id, decision, why, scope = 'once') {
   // asked gets the same answer; answering only the last one left the first hook
   // hanging until the agent's own timeout, which looks like the agent freezing.
   for (const r of p.responders) r(decision, why);
+  s.answered ||= new Map();
+  s.answered.set(id, [decision, why]);
   record(sid, { type: 'decision', id, decision, why, scope, tool: p.tool, key: p.key, waitedMs: Date.now() - p.at });
   if (s.pending.size === 0 && s.state === 'waiting') s.state = 'working';
   broadcast({ type: 'session-state', session: sid, state: s.state });
@@ -389,10 +410,30 @@ const server = http.createServer(async (req, res) => {
     try { hook = JSON.parse(await readBody(req) || '{}'); } catch { /* keep {} */ }
     const ev = url.pathname.slice('/hooks/'.length);
     const attach = url.searchParams.get('attach');
+    // From the hook in Claude Code's user settings: a session started outside the
+    // repo. With a repo it touched that repo; without one, it is ours only if an
+    // earlier call already made it so, and otherwise gets no answer at all.
+    const outside = url.searchParams.get('outside') === '1';
+    const outsideRepo = outside ? url.searchParams.get('repo') : null;
+    if (outside && !attach && !(hook.session_id && sessions.has(hook.session_id))) return hookOk(res);
     let sidResolved = sidParam;
-    if (!sidResolved && attach && hook.session_id) {
+    if (!sidResolved && (attach || outside) && hook.session_id) {
       sidResolved = hook.session_id;
-      if (!sessions.has(sidResolved)) attachSession({ id: sidResolved, name: attach.replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'repo', cwd: hook.cwd || process.cwd() });
+      if (!sessions.has(sidResolved) && attach) {
+        const made = attachSession({ id: sidResolved, name: attach.replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 24) || 'repo', cwd: outsideRepo || hook.cwd || process.cwd() });
+        // Its prompt went by before anything said the session was ours. The
+        // transcript still has it, and a record that starts mid-task without
+        // saying what was asked is missing the part a reviewer reads first.
+        if (outsideRepo) {
+          made.outside = true;
+          try { rememberOutside(sidResolved, outsideRepo); } catch { /* it is re-found by path next time */ }
+          // Later calls from this session may not mention the repo, and arrive
+          // without its settings; they keep the ones it was gated with.
+          made.auto = url.searchParams.get('auto') === '1';
+          const asked = promptFromTranscript(hook.transcript_path);
+          if (asked) { made.lastPrompt = { text: asked, at: Date.now() }; record(sidResolved, { type: 'prompt', text: asked.slice(0, 4000) }); }
+        }
+      }
     }
     const s = sessions.get(sidResolved);
     const sid = sidResolved;
@@ -410,7 +451,10 @@ const server = http.createServer(async (req, res) => {
       return hookOk(res);
     }
     if (ev === 'prompt') {
-      if (s) { s.state = 'working'; record(sid, { type: 'prompt', text: String(hook.prompt || '').slice(0, 4000) }); broadcast({ type: 'session-state', session: sid, state: s.state }); }
+      // The same prompt twice within a few seconds is one prompt heard by two hooks.
+      const text = String(hook.prompt || '');
+      const echo = s && s.lastPrompt && s.lastPrompt.text === text && Date.now() - s.lastPrompt.at < 5000;
+      if (s && !echo) { s.lastPrompt = { text, at: Date.now() }; s.state = 'working'; record(sid, { type: 'prompt', text: text.slice(0, 4000) }); broadcast({ type: 'session-state', session: sid, state: s.state }); }
       return hookOk(res);
     }
     if (ev === 'session-end') {
@@ -432,7 +476,7 @@ const server = http.createServer(async (req, res) => {
       // stalls the run and teaches people to turn the gate off. The never-rules
       // still bite, because those never needed a person. Everything that would
       // have been asked is done and written down instead.
-      const unattended = url.searchParams.get('auto') === '1';
+      const unattended = url.searchParams.get('auto') === '1' || (outside && !!s?.auto);
       let { tier, reason } = classifyWith(hook, rules);
       if (unattended && tier === 'ask') { tier = 'log'; reason = 'allowed unattended — nobody was asked'; }
       const id = hook.tool_use_id || randomUUID();
@@ -444,10 +488,22 @@ const server = http.createServer(async (req, res) => {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: `nearly: ${why}` },
       });
       if (!s) return respond('deny', 'unknown session');
-      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier, unattended }); return respond('deny', `never (${reason})`); }
+      // Already answered: the same call through a second hook — a repo's own and
+      // the user-level one, or VS Code reading two config files. Same answer,
+      // written down once.
+      if (hook.tool_use_id && s.answered?.has(id)) return respond(...s.answered.get(id));
+      const answer = (decision, why) => {
+        if (hook.tool_use_id) {
+          s.answered ||= new Map();
+          s.answered.set(id, [decision, why]);
+          if (s.answered.size > 500) s.answered.delete(s.answered.keys().next().value);
+        }
+        return respond(decision, why);
+      };
+      if (tier === 'never') { record(sid, { type: 'decision', id, decision: 'deny', why: reason, scope: 'policy', tool: shown, input: hook.tool_input, tier, unattended }); return answer('deny', `never (${reason})`); }
       if (tier === 'log') {
         record(sid, { type: 'decision', id, decision: 'allow', why: reason, scope: unattended ? 'auto' : 'policy', tool: shown, input: hook.tool_input, tier });
-        return respond('allow', unattended ? reason : `do and log (${reason})`);
+        return answer('allow', unattended ? reason : `do and log (${reason})`);
       }
       // ask: hold the response until the UI decides, or fail closed
       // A harness may say it will not wait as long as we would. It can shorten
@@ -470,10 +526,15 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (ev === 'post-tool') {
-      if (s) record(sid, { type: 'post_tool', id: hook.tool_use_id, tool: hook.tool_label || hook.tool_name, duration_ms: hook.duration_ms, response: trim(hook.tool_response ?? '') });
+      const seen = s && hook.tool_use_id && s.posted?.has(hook.tool_use_id);
+      if (s && hook.tool_use_id) { s.posted ||= new Set(); s.posted.add(hook.tool_use_id); if (s.posted.size > 500) s.posted.delete(s.posted.values().next().value); }
+      if (s && !seen) record(sid, { type: 'post_tool', id: hook.tool_use_id, tool: hook.tool_label || hook.tool_name, duration_ms: hook.duration_ms, response: trim(hook.tool_response ?? '') });
       return hookOk(res);
     }
     if (ev === 'stop') {
+      // One turn ending, heard by two hooks, is still one turn.
+      if (s && s.attached && s.lastStopAt && Date.now() - s.lastStopAt < 3000) return hookOk(res);
+      if (s && s.attached) s.lastStopAt = Date.now();
       if (s && s.attached) {
         s.turns += 1;
         s.state = 'idle';
