@@ -9,6 +9,7 @@
 //   nearly post         put that record on the pull request
 //   nearly agents       which agents this repo is gated for
 //   nearly doctor       why nothing is showing up
+//   nearly pause        stop gating every session, now; nearly resume undoes it
 //   nearly voices       list the narration voices you have
 //   nearly server       run the server in the foreground (it self-starts otherwise)
 //   nearly hook <ev>    internal: what the Claude Code hooks call
@@ -89,6 +90,25 @@ switch (cmd) {
   case 'doctor': case 'why':
     return run(s('doctor.mjs'), rest);
 
+  // Every hook checks for this file before anything else, so it reaches sessions
+  // that are already running, which no setting or environment variable can.
+  case 'pause': case 'resume': {
+    const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { homedir } = await import('node:os');
+    const dir = process.env.NEARLY_HOME || join(homedir(), '.nearly');
+    const file = join(dir, 'paused');
+    if (cmd === 'pause') {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file, `${new Date().toISOString()}\n`);
+      console.log('Nearly is paused. Every session, including ones already open, runs ungated and unrecorded.');
+      console.log('Turn it back on with: nearly resume');
+    } else {
+      rmSync(file, { force: true });
+      console.log('Nearly is gating and recording again.');
+    }
+    return process.exit(0);
+  }
+
   case 'voices':
     return run(s('build-recap.mjs'), ['--voices']);
 
@@ -118,6 +138,7 @@ switch (cmd) {
   nearly post         put that record on the pull request
   nearly agents       which agents this repo is gated for
   nearly doctor       why nothing is showing up
+  nearly pause        stop gating every session right now (nearly resume)
   nearly voices       list the narration voices you have
   nearly server       run the server in the foreground
 `);

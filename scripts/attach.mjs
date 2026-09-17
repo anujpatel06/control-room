@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dataRoot, paths } from '../server/paths.mjs';
 import { choose, installed as agentsOnMachine } from './detect.mjs';
-import { installRuntime, hasRuntime, isRuntime, runtimeCommand } from './runtime.mjs';
+import { installRuntime, hasRuntime, isRuntime, runtimeCommand, runtimeAtLeast, runtimeVersion, compareVersions, ENTRY } from './runtime.mjs';
 import { ADAPTERS } from '../server/adapters.mjs';
 import { installOutside, removeOutside, attachedRepos, userSettingsFile } from './outside.mjs';
 import { prForBranch } from './pr-state.mjs';
@@ -57,6 +57,7 @@ function pkgVersion() {
 // during `npx nearly-cli` a naive lookup finds a `nearly` that ceases to exist
 // the moment npx exits. Believing it meant writing hooks that call a command
 // nobody has, which fail on every tool call, which means no gate at all.
+let installedRoot = null;
 function onPath() {
   const args = process.platform === 'win32' ? ['nearly'] : ['-a', 'nearly'];
   let found = [];
@@ -71,7 +72,11 @@ function onPath() {
     if (/[\\/]_npx[\\/]/.test(p) || /[\\/]_npx[\\/]/.test(resolved)) continue;  // vanishes when npx exits
     try {
       const out = execFileSync(p, ['--which'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-      if (out) return p;
+      // And not an older build than this one: hooks written now may need what
+      // only this version knows. An older `nearly` on PATH is skipped, not trusted.
+      let v = null;
+      try { v = JSON.parse(readFileSync(join(out, 'package.json'), 'utf8')).version; } catch { /* unknown */ }
+      if (out && (compareVersions(v, pkgVersion()) ?? -1) >= 0) { installedRoot = out; return p; }
     } catch { /* not our command; try the next one */ }
   }
   return null;
@@ -91,9 +96,17 @@ const viaNpx = /[\\/]_npx[\\/]/.test(root);
 // on that release for good. So it installs into ~/.nearly/runtime instead —
 // somewhere the user always owns. --no-install skips it.
 function installRuntimeOnce() {
-  if (!fromPackage || onPath() || hasRuntime() || isRuntime(root)) return hasRuntime();
+  if (isRuntime(root)) return true;
+  if (onPath()) return runtimeAtLeast(pkgVersion());
+  // Present and at least this version: use it. Present but older is not "installed"
+  // for this purpose — the hooks about to be written may need what it lacks.
+  if (runtimeAtLeast(pkgVersion())) return true;
+  // A checkout does not install over what someone has; it just will not point
+  // hooks at an older copy.
+  if (!fromPackage) return false;
   if (argv.includes('--no-install') || process.env.NEARLY_NO_INSTALL === '1') return false;
-  process.stdout.write(dim('  Installing nearly so upgrades reach you… '));
+  const older = hasRuntime() ? runtimeVersion() : null;
+  process.stdout.write(dim(older ? `  Updating nearly ${older} → ${pkgVersion()}… ` : '  Installing nearly so upgrades reach you… '));
   const r = installRuntime(pkgVersion());
   if (r.ok) { console.log('done'); return true; }
   console.log(dim('could not'));
@@ -111,7 +124,7 @@ function installRuntimeOnce() {
 //   3. a pinned npx call — works, but slow and never upgrades
 //   4. the checkout's own script, for someone developing this
 let installed = onPath();
-let runtime = hasRuntime();
+let runtime = runtimeAtLeast(pkgVersion()) || isRuntime(root);
 const hookCmd = (ev) => installed
   ? `nearly hook ${ev}`
   : runtime
@@ -188,7 +201,7 @@ if (!existsSync(join(repo, '.git'))) {
 
 // Do this before the hooks are written, so they can point at the installed
 // command rather than a temporary npx download.
-if (!off) runtime = installRuntimeOnce() || hasRuntime();
+if (!off) runtime = installRuntimeOnce();
 
 // ---------------------------------------------------------------------------
 // Agent hooks
@@ -280,7 +293,9 @@ let reach = null;
 const claudeWired = wired.some((a) => a.id === 'claude-code');
 if (!off && claudeWired && !localOnly && (installed || runtime || !fromPackage)) {
   try {
-    reach = installOutside((ev) => hookCmd(ev));
+    // By path, to a file only this version and later have: see outside-hook.mjs.
+    const base = installed ? installedRoot : runtime ? dirname(dirname(ENTRY)) : root;
+    reach = installOutside((ev) => `node ${JSON.stringify(join(base, 'scripts', 'outside-hook.mjs'))} ${ev}`);
     if (reach.error) { notes.push(`sessions opened in other folders are not covered: ${reach.error}`); reach = null; }
   } catch (e) { notes.push(`sessions opened in other folders are not covered: ${e.message}`); }
 } else if (off || localOnly) {

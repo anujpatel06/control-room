@@ -115,7 +115,7 @@ test('a server is never taken away from someone mid-decision', async () => {
   // Hold a request, then ask that server to stand down. It must refuse: the
   // person deciding would otherwise be handed back to the agent's own prompt.
   const sid = `held-${Date.now()}`;
-  const held = fetch(`${BASE}/hooks/pre-tool?attach=held`, {
+  const held = fetch(`${BASE}/hooks/pre-tool?attach=held&supervise=1`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ session_id: sid, cwd: root, tool_name: 'Bash', tool_input: { command: 'held-probe' }, tool_use_id: 'h1' }),
   }).catch(() => null);

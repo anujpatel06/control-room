@@ -65,15 +65,17 @@ after(async () => {
   scrub(box);
 });
 
-function fire(args, payload, extraEnv = {}) {
+function fire(args, payload, extraEnv = {}, entry = HOOK) {
   return new Promise((resolve) => {
-    const p = spawn(process.execPath, [HOOK, ...args], { env: { ...env, ...extraEnv }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const p = spawn(process.execPath, [entry, ...args], { env: { ...env, ...extraEnv }, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     p.stdout.on('data', (d) => (out += d));
     p.on('close', () => resolve(out.trim()));
     p.stdin.end(JSON.stringify(payload));
   });
 }
+// What Claude Code's user settings run: the dedicated entry, not the flag.
+const fireOut = (args, payload, extraEnv) => fire(args, payload, extraEnv, join(root, 'scripts', 'outside-hook.mjs'));
 const decisionOf = (out) => { try { return JSON.parse(out).hookSpecificOutput.permissionDecision; } catch { return null; } };
 const events = (sid) => {
   const f = join(recordings, `${sid}.jsonl`);
@@ -88,7 +90,7 @@ test('turning it on adds one quiet hook to Claude Code\'s user settings, and kee
   assert.equal(s.theme, 'dark');
   assert.ok(JSON.stringify(s.hooks.PreToolUse).includes('echo mine'), 'the person\'s own hook was lost');
   for (const ev of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionEnd']) {
-    assert.ok((s.hooks[ev] || []).some((e) => /--outside/.test(JSON.stringify(e))), `no user-level ${ev} hook`);
+    assert.ok((s.hooks[ev] || []).some((e) => /outside-hook\.mjs/.test(JSON.stringify(e))), `no user-level ${ev} hook`);
   }
 });
 
@@ -101,7 +103,7 @@ test('turning it on says to restart open sessions, and that the record comes wit
 });
 
 test('a session opened one folder up is gated and recorded when it edits the repo', async () => {
-  const out = await fire(['pre-tool', '--outside'],
+  const out = await fireOut(['pre-tool'],
     call('outer-1', 'w1', 'Write', { file_path: join(repo, 'new-file.txt'), content: 'hi' }),
     { CLAUDE_PROJECT_DIR: outer });
   assert.equal(decisionOf(out), 'allow', `no answer came back: ${out}`);
@@ -114,13 +116,13 @@ test('a session opened one folder up is gated and recorded when it edits the rep
 });
 
 test('once it is gated, a destructive call that never mentions the repo is still refused', async () => {
-  const out = await fire(['pre-tool', '--outside'],
+  const out = await fireOut(['pre-tool'],
     call('outer-1', 'r1', 'Bash', { command: 'rm -rf ~/nearly-outside-canary' }), { CLAUDE_PROJECT_DIR: outer });
   assert.equal(decisionOf(out), 'deny', `rm -rf in the home folder was not refused: ${out}`);
 });
 
 test('a relative cd into the repo counts as working in it', async () => {
-  const out = await fire(['pre-tool', '--outside'],
+  const out = await fireOut(['pre-tool'],
     call('outer-cd', 'c1', 'Bash', { command: 'cd alpha && git status' }), { CLAUDE_PROJECT_DIR: outer });
   assert.equal(decisionOf(out), 'allow');
   assert.ok(events('outer-cd').length, 'a cd into the repo was not seen');
@@ -128,11 +130,11 @@ test('a relative cd into the repo counts as working in it', async () => {
 
 test('a session that never touches an attached repo gets no answer and leaves no record', async () => {
   const elsewhere = mkdtempSync(join(box, 'elsewhere-'));
-  const out = await fire(['pre-tool', '--outside'],
+  const out = await fireOut(['pre-tool'],
     call('stranger', 's1', 'Bash', { command: 'ls -la' }, elsewhere), { CLAUDE_PROJECT_DIR: elsewhere });
   assert.equal(out, '', 'an unrelated session was answered');
   assert.equal(events('stranger').length, 0, 'an unrelated session was recorded');
-  const prompt = await fire(['prompt', '--outside'], { session_id: 'stranger', cwd: elsewhere, prompt: 'hello' }, { CLAUDE_PROJECT_DIR: elsewhere });
+  const prompt = await fireOut(['prompt'], { session_id: 'stranger', cwd: elsewhere, prompt: 'hello' }, { CLAUDE_PROJECT_DIR: elsewhere });
   assert.equal(prompt, '');
   assert.equal(events('stranger').length, 0);
 });
@@ -153,7 +155,7 @@ test('an unrelated session never reaches a server, so an older one cannot refuse
   await new Promise((r) => old.listen(port, '127.0.0.1', r));
   try {
     const elsewhere = mkdtempSync(join(box, 'elsewhere-'));
-    const out = await fire(['pre-tool', '--outside'], call('stranger-2', 's2', 'Bash', { command: 'ls' }, elsewhere),
+    const out = await fireOut(['pre-tool'], call('stranger-2', 's2', 'Bash', { command: 'ls' }, elsewhere),
       { CLAUDE_PROJECT_DIR: elsewhere, NEARLY_PORT: String(port) });
     assert.equal(out, '', `an unrelated call was answered: ${out}`);
     assert.equal(hits, 0, 'an unrelated call reached a server');
@@ -161,7 +163,7 @@ test('an unrelated session never reaches a server, so an older one cannot refuse
 });
 
 test('a session started in the repo is left to the repo\'s own hooks', async () => {
-  const out = await fire(['pre-tool', '--outside'],
+  const out = await fireOut(['pre-tool'],
     call('inside-1', 'i1', 'Write', { file_path: join(repo, 'b.txt'), content: 'x' }, repo), { CLAUDE_PROJECT_DIR: repo });
   assert.equal(out, '', 'the user-level hook answered alongside the repo\'s own');
   assert.equal(events('inside-1').length, 0);
@@ -173,7 +175,7 @@ test('one call heard by two hooks is answered by both and written down once', as
   const payload = call('both-1', 'dup-1', 'Bash', { command: 'rm -rf ~' }, sub);
   const [a, b] = await Promise.all([
     fire(['pre-tool', 'alpha', '--auto'], payload, { CLAUDE_PROJECT_DIR: sub }),
-    fire(['pre-tool', '--outside'], payload, { CLAUDE_PROJECT_DIR: sub }),
+    fireOut(['pre-tool'], payload, { CLAUDE_PROJECT_DIR: sub }),
   ]);
   assert.equal(decisionOf(a), 'deny');
   assert.equal(decisionOf(b), 'deny');
@@ -188,7 +190,7 @@ test('what was asked is taken from the transcript, since the prompt went by befo
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } },
     { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'done' }] } },
   ].map((l) => JSON.stringify(l)).join('\n') + '\n');
-  await fire(['pre-tool', '--outside'],
+  await fireOut(['pre-tool'],
     { ...call('outer-t', 't1', 'Edit', { file_path: join(repo, 'a.txt'), old_string: 'x', new_string: 'y' }), transcript_path: transcript },
     { CLAUDE_PROJECT_DIR: outer });
   const prompts = events('outer-t').filter((e) => e.type === 'prompt');
@@ -231,7 +233,7 @@ test('turning it off for the last repo removes the user-level hook and nothing e
   const s = JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8'));
   assert.equal(s.theme, 'dark');
   assert.ok(JSON.stringify(s.hooks).includes('echo mine'), 'off removed the person\'s own hook');
-  assert.doesNotMatch(JSON.stringify(s), /--outside/, 'the user-level hook outlived the last repo');
+  assert.doesNotMatch(JSON.stringify(s), /outside-hook|--outside/, 'the user-level hook outlived the last repo');
 });
 
 test('an unreadable user settings file is left exactly as it was', () => {

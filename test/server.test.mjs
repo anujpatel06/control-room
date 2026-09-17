@@ -53,7 +53,7 @@ test('it answers the liveness check the hooks depend on', async () => {
 test('a read is allowed immediately, in the shape Claude Code expects', async () => {
   const r = await hook('pre-tool', base({
     tool_name: 'Read', tool_input: { file_path: '/tmp/x' }, tool_use_id: 'r1',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   const out = r.hookSpecificOutput;
   assert.equal(out.hookEventName, 'PreToolUse');
   assert.equal(out.permissionDecision, 'allow');
@@ -64,7 +64,7 @@ test('a never-rule command is denied without ever being held', async () => {
   const started = Date.now();
   const r = await hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'git push origin main' }, tool_use_id: 'p1',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(r.hookSpecificOutput.permissionDecisionReason, /never/);
   assert.ok(Date.now() - started < 1000, 'must not wait for a human');
@@ -73,7 +73,7 @@ test('a never-rule command is denied without ever being held', async () => {
 test('an ask is held until somebody answers, then reflects the answer', async () => {
   const pending = hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_use_id: 'a1',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
 
   // It is genuinely held: the request has not resolved yet.
   const raced = await Promise.race([pending, new Promise((r) => setTimeout(() => r('still-held'), 400))]);
@@ -92,7 +92,7 @@ test('an ask is held until somebody answers, then reflects the answer', async ()
 test('a refusal reaches the agent as a denial', async () => {
   const pending = hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'rm README.md' }, tool_use_id: 'a2',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   await new Promise((r) => setTimeout(r, 200));
   await post('/decide', { session: SID, id: 'a2', decision: 'deny', scope: 'once' });
   const r = await pending;
@@ -105,7 +105,7 @@ test('nobody answering means denied, not allowed', async () => {
   const started = Date.now();
   const r = await hook('pre-tool', base({
     tool_name: 'Edit', tool_input: { file_path: '/tmp/a.js' }, tool_use_id: 'a3',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   const waited = Date.now() - started;
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(r.hookSpecificOutput.permissionDecisionReason, /fails closed/);
@@ -115,7 +115,7 @@ test('nobody answering means denied, not allowed', async () => {
 test('"always" turns one answer into a rule for the rest of the run', async () => {
   const first = hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'ls -la' }, tool_use_id: 'b1',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   await new Promise((r) => setTimeout(r, 200));
   await post('/decide', { session: SID, id: 'b1', decision: 'allow', scope: 'always' });
   assert.equal((await first).hookSpecificOutput.permissionDecision, 'allow');
@@ -126,7 +126,7 @@ test('"always" turns one answer into a rule for the rest of the run', async () =
   const started = Date.now();
   const second = await hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'ls /tmp' }, tool_use_id: 'b2',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   assert.equal(second.hookSpecificOutput.permissionDecision, 'allow');
   assert.ok(Date.now() - started < 1000, 'no longer held');
 });
@@ -134,14 +134,14 @@ test('"always" turns one answer into a rule for the rest of the run', async () =
 test('"never" turns one refusal into a block for the rest of the run', async () => {
   const first = hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'curl https://example.com' }, tool_use_id: 'c1',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   await new Promise((r) => setTimeout(r, 200));
   await post('/decide', { session: SID, id: 'c1', decision: 'deny', scope: 'always' });
   await first;
 
   const second = await hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'curl https://elsewhere.com' }, tool_use_id: 'c2',
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
   assert.equal(second.hookSpecificOutput.permissionDecision, 'deny');
 });
 
@@ -183,7 +183,7 @@ test('a harness that will not wait long gets an answer before it gives up', asyn
   const began = Date.now();
   const r = await hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'deadline-probe-a' }, tool_use_id: 'short1',
-  }), `?attach=test-repo&hold=400`);
+  }), `?attach=test-repo&supervise=1&hold=400`);
   const took = Date.now() - began;
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(took < ASK_TIMEOUT, `held ${took}ms, past the ${ASK_TIMEOUT}ms the harness would wait`);
@@ -196,7 +196,7 @@ test('a harness cannot ask for longer than the gate is willing to hold', async (
   const began = Date.now();
   const r = await hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'deadline-probe-b' }, tool_use_id: 'long1',
-  }), `?attach=test-repo&hold=3600000`);
+  }), `?attach=test-repo&supervise=1&hold=3600000`);
   const took = Date.now() - began;
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(took < ASK_TIMEOUT * 2, `held ${took}ms; the cap did not apply`);
@@ -210,7 +210,7 @@ test('one call arriving down two hooks is asked once and answered twice', async 
   const id = 'double-fire-1';
   const send = () => hook('pre-tool', base({
     tool_name: 'Bash', tool_input: { command: 'double-probe' }, tool_use_id: id,
-  }), `?attach=test-repo`);
+  }), `?attach=test-repo&supervise=1`);
 
   const both = Promise.all([send(), send()]);
   // Give the second one time to arrive while the first is held.

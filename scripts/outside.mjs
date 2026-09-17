@@ -127,9 +127,11 @@ function readSettings(file) {
   catch { return undefined; }   // present but unreadable: never overwrite it
 }
 
-const outsideEntry = (e) => isOurs(e) && /--outside\b/.test(JSON.stringify(e));
+// Either form: the file this version writes, or the flag 0.1.18–0.1.20 wrote, so
+// turning Nearly on again replaces the broken one rather than adding beside it.
+const outsideEntry = (e) => /outside-hook\.mjs|--outside\b/.test(JSON.stringify(e)) && (isOurs(e) || /outside-hook\.mjs/.test(JSON.stringify(e)));
 
-// cmdFor(event) is the same command the repo hooks run, without a repo name.
+// cmdFor(event) is the full command for that event.
 export function installOutside(cmdFor) {
   const file = userSettingsFile();
   const s = readSettings(file);
@@ -142,7 +144,7 @@ export function installOutside(cmdFor) {
   }
   for (const [their, ours] of Object.entries(OUTSIDE_EVENTS)) {
     hooks[their] = [...(hooks[their] || []),
-      { hooks: [{ type: 'command', command: `${cmdFor(ours)} --outside`, timeout: ours === 'pre-tool' ? 600 : ours === 'session-end' ? 120 : 30 }] }];
+      { hooks: [{ type: 'command', command: cmdFor(ours), timeout: ours === 'pre-tool' ? 600 : ours === 'session-end' ? 120 : 30 }] }];
   }
   settings.hooks = hooks;
   mkdirSync(dirname(file), { recursive: true });
@@ -165,6 +167,21 @@ export function removeOutside() {
   if (!Object.keys(settings.hooks).length) delete settings.hooks;
   writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
   return { removed: true, file };
+}
+
+// Whether the user-level hook would actually run this version's code. The form
+// 0.1.18–0.1.20 wrote, or a path to a file that is not there, is worse than no hook.
+export function outsideProblem() {
+  const s = readSettings(userSettingsFile());
+  const cmds = s && s.hooks ? Object.values(s.hooks).flatMap((list) => (list || []).filter(outsideEntry))
+    .flatMap((e) => e.hooks || []).map((h) => String(h.command || '')) : [];
+  if (!cmds.length) return null;
+  if (cmds.some((c) => /--outside\b/.test(c))) return 'written by 0.1.18–0.1.20 in a form an older install misreads';
+  for (const c of cmds) {
+    const m = c.match(/"([^"]*outside-hook\.mjs)"/);
+    if (m && !existsSync(m[1])) return `points at ${m[1]}, which is not there`;
+  }
+  return null;
 }
 
 export function outsideInstalled() {

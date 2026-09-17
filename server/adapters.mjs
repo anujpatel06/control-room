@@ -132,7 +132,7 @@ function writeJson(file, obj) {
 // the old HTTP hooks. Matching the word "nearly" anywhere claimed any hook that
 // mentioned it, and attach deleted a user's `nearly-finished-notifier/notify.sh`.
 // The quote-and-backslash run tolerates the same command read out of raw JSON.
-export const OURS_RE = /(?:^|[\s"'/\\])(?:nearly(?:\.mjs)?|nearly-cli@\S+?|hook\.mjs)[\\"']*\s+(?:hook\s+)?(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b|:\d+\/hooks\/(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b/;
+export const OURS_RE = /(?:^|[\s"'/\\])(?:nearly(?:\.mjs)?|nearly-cli@\S+?|(?:outside-)?hook\.mjs)[\\"']*\s+(?:hook\s+)?(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b|:\d+\/hooks\/(?:session-start|prompt|pre-tool|post-tool|stop|session-end|subagent-stop)\b/;
 
 export function isOurs(value) {
   if (value == null) return false;

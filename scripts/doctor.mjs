@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { paths, dataRoot } from '../server/paths.mjs';
 import { ADAPTERS, OURS_RE } from '../server/adapters.mjs';
-import { outsideInstalled } from './outside.mjs';
+import { outsideInstalled, outsideProblem } from './outside.mjs';
+import { runtimeVersion, hasRuntime, compareVersions } from './runtime.mjs';
+import { homedir } from 'node:os';
 import { prForBranch } from './pr-state.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -127,8 +129,22 @@ if (gated.length) {
 // A repo's own hooks only run for sessions started in it. Everything above can
 // be green while every session is opened one folder up and none of it is seen.
 if (gated.some((a) => a.id === 'claude-code')) {
-  if (outsideInstalled()) say(true, 'sessions opened in other folders', 'gated once they work in this repo');
+  const broken = outsideProblem();
+  if (broken) say(false, 'sessions opened in other folders', `the hook in Claude Code's user settings is ${broken}`, 'run `nearly` here to rewrite it, or `nearly pause` to stop every session being gated right now');
+  else if (outsideInstalled()) say(true, 'sessions opened in other folders', 'gated once they work in this repo');
   else say(null, 'sessions opened in other folders', 'not gated — only Claude Code sessions started in this folder are. Run `nearly` here to cover them');
+}
+
+// Paused everywhere, or an installed copy older than the one running this.
+if (existsSync(join(process.env.NEARLY_HOME || join(homedir(), '.nearly'), 'paused'))) {
+  say(false, 'paused', 'nothing is gated or recorded in any session', 'run `nearly resume` to turn it back on');
+}
+{
+  let mine = null;
+  try { mine = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version; } catch { /* unknown */ }
+  if (hasRuntime() && mine && (compareVersions(runtimeVersion(), mine) ?? 0) < 0) {
+    say(null, 'installed copy', `${runtimeVersion()}, older than this nearly (${mine}) — run \`nearly\` here to update it`);
+  }
 }
 
 // 3 — the server, and whether it is this build

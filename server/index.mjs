@@ -451,7 +451,7 @@ const server = http.createServer(async (req, res) => {
           try { rememberOutside(sidResolved, outsideRepo); } catch { /* it is re-found by path next time */ }
           // Later calls from this session may not mention the repo, and arrive
           // without its settings; they keep the ones it was gated with.
-          made.auto = url.searchParams.get('auto') === '1';
+          made.auto = url.searchParams.get('supervise') !== '1';
           const asked = promptFromTranscript(hook.transcript_path);
           if (asked) { made.lastPrompt = { text: asked, at: Date.now() }; record(sidResolved, { type: 'prompt', text: asked.slice(0, 4000) }); }
         }
@@ -498,7 +498,15 @@ const server = http.createServer(async (req, res) => {
       // stalls the run and teaches people to turn the gate off. The never-rules
       // still bite, because those never needed a person. Everything that would
       // have been asked is done and written down instead.
-      const unattended = url.searchParams.get('auto') === '1' || (outside && !!s?.auto);
+      // Held for a person only when asked for outright. Sessions this server started
+      // from the dashboard are supervised unless told otherwise; attached ones are
+      // unattended unless their hook says supervise. A hook that says neither —
+      // from a mismatched version, or none at all — runs unattended with the
+      // never-rules intact, instead of freezing its session two minutes at a time.
+      const supervise = url.searchParams.get('supervise') === '1';
+      const unattended = sidParam
+        ? url.searchParams.get('auto') === '1'
+        : url.searchParams.get('auto') === '1' || !(supervise || (outside && s && s.auto === false));
       let { tier, reason } = classifyWith(hook, rules);
       if (unattended && tier === 'ask') { tier = 'log'; reason = 'allowed unattended — nobody was asked'; }
       const id = hook.tool_use_id || randomUUID();

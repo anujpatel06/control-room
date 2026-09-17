@@ -38,8 +38,25 @@ const args = process.argv.slice(2);
 const flag = args.find((a) => a.startsWith('--adapter='));
 const positional = args.filter((a) => !a.startsWith('--'));
 const [event] = positional;
-let name = positional[1] || 'repo';
+let name = positional[1] || null;
 if (!event) process.exit(0);
+
+// Anything this build does not understand, it stays out of. A flag from a newer
+// version, or a hook with no repo name, used to be read as "gate this session,
+// supervised" — which, run from Claude Code's user settings, held every tool call
+// of every session on the machine. Unknown means answer nothing.
+const KNOWN = /^--(?:adapter=[a-z0-9-]+|auto|supervise|outside)$/;
+if (args.some((a) => a.startsWith('--') && !KNOWN.test(a))) process.exit(0);
+if (!name && !args.includes('--outside')) process.exit(0);
+
+// The off switch for every session at once: `nearly pause`. A file rather than an
+// environment variable, because sessions already running cannot be given a new
+// environment, and those are exactly the ones that need stopping.
+try {
+  const { existsSync } = await import('node:fs');
+  const { homedir } = await import('node:os');
+  if (existsSync(join(process.env.NEARLY_HOME || join(homedir(), '.nearly'), 'paused'))) process.exit(0);
+} catch { /* no home to check: carry on */ }
 
 // An unknown id is a typo in a config file, not a reason to wedge the agent.
 const adapter = flag ? byId(flag.slice('--adapter='.length)) : null;
@@ -47,6 +64,12 @@ const adapter = flag ? byId(flag.slice('--adapter='.length)) : null;
 // as machine-wide state, because supervising one project and not another is the
 // normal case.
 let unattended = args.includes('--auto');
+// Holding a call for a person happens only when a hook says so outright. The
+// absence of --auto used to mean it, so any hook that lost or never had the flag
+// froze its session; a missing setting now runs unattended, never-rules intact.
+// Repo hooks written before --supervise existed say supervised by leaving --auto
+// out, and still mean it, so a named repo hook without --auto is read that way.
+let supervised = args.includes('--supervise') || (!!name && !args.includes('--auto') && !args.includes('--outside'));
 // Written into Claude Code's user settings rather than a repo's: see outside.mjs.
 const outside = args.includes('--outside');
 
@@ -109,6 +132,7 @@ if (outside) {
   if (!hit) process.exit(0);
   name = hit.name;
   unattended = hit.auto;
+  supervised = !hit.auto;
   extra = `&outside=1&repo=${encodeURIComponent(hit.repo)}`;
 }
 
@@ -142,7 +166,7 @@ if (adapter && adapter.normalize) {
 
 try {
   const hold = adapter?.holdMs ? `&hold=${adapter.holdMs}` : '';
-  const auto = unattended ? '&auto=1' : '';
+  const auto = (unattended ? '&auto=1' : '') + (supervised && !unattended ? '&supervise=1' : '');
   const res = await fetch(`${BASE}/hooks/${event}?attach=${encodeURIComponent(name)}${hold}${auto}${extra}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

@@ -17,7 +17,7 @@
 // So install into a directory the user always owns. No root, no PATH, no
 // global prefix to be wrong about.
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -28,6 +28,27 @@ export const RUNTIME = join(process.env.NEARLY_HOME || join(homedir(), '.nearly'
 export const ENTRY = join(RUNTIME, 'node_modules', 'nearly-cli', 'bin', 'nearly.mjs');
 
 export const hasRuntime = () => existsSync(ENTRY);
+
+// Which version is installed there. Hooks written by one version and run by an
+// older one is how 0.1.18 froze every Claude Code session on a machine: the new
+// user-level hook was pointed at an installed 0.1.17, which did not understand
+// it and held every tool call in every session for two minutes, then refused it.
+export function runtimeVersion() {
+  try { return JSON.parse(readFileSync(join(RUNTIME, 'node_modules', 'nearly-cli', 'package.json'), 'utf8')).version; }
+  catch { return null; }
+}
+
+const parts = (v) => String(v).split('-')[0].split('.').map(Number);
+// -1, 0 or 1; null when either is not a version at all.
+export function compareVersions(a, b) {
+  const [x, y] = [parts(a), parts(b)];
+  if (x.length < 3 || y.length < 3 || x.some(Number.isNaN) || y.some(Number.isNaN)) return null;
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1;
+  return 0;
+}
+
+// The installed copy is at least `version`: safe to point hooks at.
+export const runtimeAtLeast = (version) => hasRuntime() && (compareVersions(runtimeVersion(), version) ?? -1) >= 0;
 
 export function isRuntime(root) {
   const rel = resolve(root);

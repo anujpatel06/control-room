@@ -180,6 +180,23 @@ Three things that are easy to miss, and that the command now says out loud:
   removed when you turn Nearly off for the last repo, and `nearly --local-only`
   skips it.
 
+**If anything ever goes wrong, `nearly pause`.** It stops Nearly gating and
+recording in every session at once, including ones already open, and `nearly
+resume` turns it back on. It exists because 0.1.18–0.1.20 could freeze every
+Claude Code session on a machine: turning Nearly on wrote the user-level hook and
+pointed it at an older installed copy, which misread it and held every tool call
+for two minutes before refusing it. If you ran one of those versions, run
+`npx nearly-cli@latest` in your repo again; `nearly doctor` says whether your
+user-level hook is the broken form. Four things now stop it happening again:
+
+- Nearly upgrades its installed copy before pointing any hook at it, and never
+  points a hook at a copy older than itself.
+- The user-level hook runs a file only this version and later have. An older copy
+  has no such file, so the hook errors, and Claude Code treats that as no objection.
+- A hook given a flag it does not know, or no repo name, answers nothing.
+- A call is only held for a person when the hook says `--supervise` outright.
+  Anything missing or mismatched runs unattended, with the never-rules still on.
+
 ### Where it installs
 
 `npx nearly-cli` installs a copy into `~/.nearly/runtime`, and the hooks call
