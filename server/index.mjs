@@ -189,6 +189,10 @@ function createSession({ name, prompt, repo: repoArg }) {
   sessions.set(id, s);
   record(id, { type: 'session', subtype: 'created', name: safe, branch, worktree, repo, prompt });
 
+  // Writing the prompt to an agent that never started fails on stdin, not on the
+  // process. On Windows that error arrives after the spawn error and, unhandled,
+  // took the server down with every session in it. The spawn error already says why.
+  proc.stdin.on('error', () => { /* reported by proc.on('error') or 'exit' */ });
   proc.stderr.on('data', (d) => record(id, { type: 'stderr', text: String(d).slice(0, 2000) }));
   proc.stdout.on('data', (d) => {
     s.buf += d;
@@ -316,7 +320,7 @@ function buildRecap(s, extraArgs = [], cb) {
 
 function send(s, text) {
   const m = { type: 'user', message: { role: 'user', content: text } };
-  s.proc.stdin.write(JSON.stringify(m) + '\n');
+  if (s.proc.stdin.writable) s.proc.stdin.write(JSON.stringify(m) + '\n');
   s.state = 'working';
   record(s.id, { type: 'prompt', text });
   broadcast({ type: 'session-state', session: s.id, state: s.state });
