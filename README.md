@@ -226,7 +226,7 @@ Nothing about how you work changes. Open the repo in VS Code or a terminal, star
 1. **Reads run silently.** Anything that only looks at your code is allowed and logged.
 2. **Anything that changes or reaches out is held.** It appears at http://127.0.0.1:47653 with the command, what it can affect, and a countdown. Answer with `A` or `D`, or shift for always and never. Nobody answering means denied after two minutes.
 3. **The record builds itself** when the session ends.
-4. **At `git push`** the hook merges every session on that branch, prints what was refused, and asks whether to post it. Say no and the push just continues.
+4. **At `git push`** the hook merges every session on that branch, prints what was refused, and posts it to the branch's open pull request. When the agent opens the pull request itself, the record is posted right then.
 5. **Your reviewer opens the pull request** and the record is there, as one comment that updates on every push rather than a new one each time.
 
 ### For a team
@@ -377,16 +377,23 @@ node scripts/install-push-hook.mjs ~/code/my-app
 ```
 
 That installs a `pre-push` hook. On your next push it builds the branch record,
-prints what it found including anything refused, and — only if there is an open
-pull request — asks whether to post it. Answer `y` and it comments; anything else
-and the push just continues.
+prints what it found including anything refused, and posts it to the branch's
+open pull request — one comment, updated on every push after that.
+
+It used to ask first, in the terminal. That never happened in practice: the push
+that matters is the agent's own ("raise a PR"), an agent's push has no terminal,
+and so nothing was ever posted and every reviewer saw an empty pull request. The
+pull request is also usually opened after that push, so Nearly now posts as soon
+as it sees the agent run `gh pr create` too.
 
 Three rules it follows:
 
 - **It never blocks a push.** No sessions on the branch, no server, a crash, a
   timeout: it prints one dim line at most and exits 0.
-- **It never posts without you.** A record of what you refused is more revealing
-  than a diff. Publishing that to a shared pull request is your call, every time.
+- **Posting is on unless you turn it off.** The record includes every prompt word
+  for word. `nearly --no-post` stops posting for a repo and `nearly --post` turns
+  it back on; `NEARLY_NO_POST=1` stops it everywhere. A merged or closed pull
+  request is never posted to.
 - **It stays fast.** Narration is skipped by default, because a minute of `say`
   at every push is not acceptable. Set `NEARLY_AUDIO=1` when you want the good one.
 

@@ -96,7 +96,7 @@ test('turning it on says to restart open sessions, and that the record comes wit
   // Both were true and neither was said, so the natural reading of an empty pull
   // request was that Nearly did not work.
   assert.match(onOutput, /restart any Claude Code session already open/);
-  assert.match(onOutput, /next push/);
+  assert.match(onOutput, /next push|posted to the pull request when it is opened/);
   assert.match(onOutput, /sessions opened in another folder are gated too/);
 });
 

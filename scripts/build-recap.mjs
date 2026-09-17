@@ -160,6 +160,22 @@ function patch(cwd, range, maxLines = 48) {
 const short = (s, n = 90) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const secs = (ms) => (ms / 1000).toFixed(1);
 const plural = (n, w, ws = w + 's') => `${n} ${n === 1 ? w : ws}`;
+// "5221s" is a number nobody reads as an hour and a half.
+const clock = (s) => {
+  s = Math.round(s);
+  if (s < 90) return `${s}s`;
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${Math.round(s / 60)}m`;
+};
+const spoken = (s) => {
+  s = Math.round(s);
+  if (s < 90) return plural(s, 'second');
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h ? `${plural(h, 'hour')}${m ? ` ${plural(m, 'minute')}` : ''}` : plural(Math.round(s / 60), 'minute');
+};
+// Tools that only look. Anything else allowed without asking changed something,
+// and calling it read-only told a reviewer that edits were only reads.
+const READS = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite']);
 
 function describeInput(tool, input = {}) {
   if (tool === 'Bash') return input.command || '';
@@ -253,6 +269,9 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   // itself the fact. Leaving it implied reads as "nothing needed approving"
   // when what happened is that nobody was asked.
   const unattended = decisions.some((d) => d.scope === 'auto');
+  // With nobody watching, "waiting on a human: 0.0s" and "asked Anuj: 0" are not
+  // facts about the work, just columns about a supervisor who was not there.
+  const nobodyThere = unattended && !humanDecisions.length && !humanWaitMs && !asks.length;
   scenes.push({
     kind: 'cover',
     title: headlineBits.length ? headlineBits.join(', ') : 'A session with nothing to flag',
@@ -268,14 +287,14 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
     repo: worktree ? basename(worktree) : null,
     branch: created?.branch || null,
     stats: [
-      ['Ran for', `${durS.toFixed(0)}s`, ''],
-      [V('Waiting on a human', 'Waiting on you'), `${secs(humanWaitMs)}s`, 'ask'],
+      ['Ran for', clock(durS), ''],
+      ...(nobodyThere ? [] : [[V('Waiting on a human', 'Waiting on you'), `${secs(humanWaitMs)}s`, 'ask']]),
       ['Tool calls', String(toolUses.length), ''],
-      [V('Asked ' + AUTHOR, 'Asked you'), String(humanDecisions.length), ''],
+      ...(nobodyThere ? [] : [[V('Asked ' + AUTHOR, 'Asked you'), String(humanDecisions.length), '']]),
       ['Refused', String(denied.length), denied.length ? 'deny' : ''],
       ['Rolled back', String(undos.length), undos.length ? 'undo' : ''],
     ],
-    narration: `${sbRuns > 1 ? `${plural(sbRuns, 'agent session')} on this branch, ${durS.toFixed(0)} seconds in total` : `Agent ${name} ran for ${durS.toFixed(0)} seconds`} under ${supPoss} supervision. ${plural(toolUses.length, 'tool call')}, ${humanDecisions.length} held for a decision, ${denied.length} refused${undos.length ? `, ${plural(undos.length, 'turn')} rolled back` : ''}.`,
+    narration: `${sbRuns > 1 ? `${plural(sbRuns, 'agent session')} on this branch, ${spoken(durS)} in total` : `Agent ${name} ran for ${spoken(durS)}`}${nobodyThere ? ', with nobody watching' : ` under ${supPoss} supervision`}. ${plural(toolUses.length, 'tool call')}, ${nobodyThere ? '' : `${humanDecisions.length} held for a decision, `}${denied.length} refused${undos.length ? `, ${plural(undos.length, 'turn')} rolled back` : ''}.`,
   });
 
   // 2. intent. One scene per thing that was asked for, in order, so a branch
@@ -290,10 +309,13 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
   const flushQuiet = () => {
     if (!quiet.length) return;
     const tools = [...new Set(quiet.map((q) => q.tool))];
+    const onlyReads = quiet.every((q) => READS.has(q.tool));
+    const byRule = quiet.every((q) => !q.auto);
     scenes.push({
       kind: 'quiet',
+      onlyReads,
       items: quiet.map((q) => ({ tool: q.tool, sub: short(describeInput(q.tool, q.input), 80) })),
-      narration: `${plural(quiet.length, 'read-only step')} ran without asking: ${tools.join(', ')}. Logged, not gated.`,
+      narration: `${plural(quiet.length, onlyReads ? 'read-only step' : 'step')} ran without asking: ${tools.join(', ')}. ${onlyReads || byRule ? 'Logged, not gated.' : 'Nobody was watching, so nobody was asked; every one is logged.'}`,
     });
     quiet = [];
   };
@@ -318,7 +340,7 @@ function buildStoryboard({ id, events, runs: sbRuns = 1 }) {
       const tool = e.tool;
       const input = ask?.input ?? e.input ?? {};
       const res = results.find((r) => r.id === e.id);
-      if (e.tier === 'log') { quiet.push({ tool, input }); continue; }
+      if (e.tier === 'log') { quiet.push({ tool, input, auto: e.scope === 'auto' }); continue; }
       flushQuiet();
       const human = e.waitedMs != null;
       const w = human ? secs(e.waitedMs) : null;

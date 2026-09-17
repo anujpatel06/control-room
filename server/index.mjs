@@ -243,6 +243,28 @@ function modelFromTranscript(p) {
   return null;
 }
 
+// "Raise a PR" pushes the branch first and opens the pull request second. The
+// push found no pull request to post to, and nothing happens after the pull
+// request exists — so on the agent's own branch, the one thing a reviewer opens
+// never had a record on it. When an agent opens one, post straight away, from a
+// process of its own so the agent is not kept waiting.
+const OPENED = /\bgh\s+pr\s+create\b/;
+function postWhenOpened(s, hook) {
+  const cmd = hook.tool_input?.command;
+  if (typeof cmd !== 'string' || !OPENED.test(cmd)) return;
+  const said = typeof hook.tool_response === 'string' ? hook.tool_response : JSON.stringify(hook.tool_response ?? '');
+  if (!/\/pull\/\d+/.test(said)) return;              // it did not open one
+  try {
+    const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'push-record.mjs'), s.worktree], {
+      cwd: s.worktree, detached: true, stdio: 'ignore',
+      env: { ...process.env, NEARLY_NO_UPDATE: '1', NEARLY_NO_TTY: '1' },
+    });
+    child.on('error', () => { /* the next push posts it */ });
+    child.unref();
+    record(s.id, { type: 'hook', event: 'record-posting', detail: 'pull request opened' });
+  } catch { /* the next push posts it */ }
+}
+
 // The most recent thing the person typed, from a Claude Code transcript.
 function promptFromTranscript(p) {
   if (!p || !fs.existsSync(p)) return null;
@@ -529,6 +551,7 @@ const server = http.createServer(async (req, res) => {
       const seen = s && hook.tool_use_id && s.posted?.has(hook.tool_use_id);
       if (s && hook.tool_use_id) { s.posted ||= new Set(); s.posted.add(hook.tool_use_id); if (s.posted.size > 500) s.posted.delete(s.posted.values().next().value); }
       if (s && !seen) record(sid, { type: 'post_tool', id: hook.tool_use_id, tool: hook.tool_label || hook.tool_name, duration_ms: hook.duration_ms, response: trim(hook.tool_response ?? '') });
+      if (s && !seen && s.attached && s.worktree) postWhenOpened(s, hook);
       return hookOk(res);
     }
     if (ev === 'stop') {

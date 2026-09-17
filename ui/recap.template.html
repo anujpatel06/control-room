@@ -300,7 +300,7 @@ const render = {
   quiet: (s) => `
     <div class="eyebrow"><span class="lbl">Ran without asking</span>${T('auto', 'log tier')}</div>
     <div class="rows">${s.items.map((i) => `<div class="row"><span class="t">${esc(i.tool)}</span><span class="s" title="${esc(i.sub)}">${esc(i.sub)}</span>${T('auto', 'receipt')}</div>`).join('')}</div>
-    <div class="sub" style="margin-top:auto">Read-only tools run on the log tier. Nobody was asked, but every call is on the record.</div>`,
+    <div class="sub" style="margin-top:auto">${s.onlyReads === false ? 'Allowed without anyone being asked. Every call is on the record.' : 'Read-only tools run on the log tier. Nobody was asked, but every call is on the record.'}</div>`,
 
   decision: (s) => {
     const d = s.tier === 'never' ? 'never' : s.decision;

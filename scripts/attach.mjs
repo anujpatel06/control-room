@@ -10,7 +10,7 @@
 //     gated and recorded whether you start them in a terminal, in VS Code or in
 //     JetBrains. Claude Code always; Cursor, Antigravity, Copilot, Codex, Gemini
 //     and Windsurf when the repo shows signs of them, or on --agent=
-//   · a git pre-push hook, so the record is offered when the work leaves your
+//   · a git pre-push hook, so the record is posted when the work leaves your
 //     machine
 //   · where the records are published, read from the Nearly's own remote
 //   · one hook in Claude Code's user settings, so a session opened in another
@@ -30,6 +30,7 @@ import { installRuntime, hasRuntime, isRuntime, runtimeCommand } from './runtime
 import { ADAPTERS } from '../server/adapters.mjs';
 import { installOutside, removeOutside, attachedRepos, userSettingsFile } from './outside.mjs';
 import { prForBranch } from './pr-state.mjs';
+import { postingOff, setPosting } from './posting.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const HOOK = join(root, 'scripts', 'hook.mjs');
@@ -271,6 +272,10 @@ try {
 // in its user settings covers the rest, and stays only while some repo still
 // has Nearly on. Never from a pinned npx call: that would put a registry lookup
 // in front of every tool call in every session on the machine.
+if (!off && (argv.includes('--no-post') || argv.includes('--post'))) {
+  try { setPosting(repo, argv.includes('--post')); } catch (e) { notes.push(`could not save the posting choice: ${e.message}`); }
+}
+
 let reach = null;
 const claudeWired = wired.some((a) => a.id === 'claude-code');
 if (!off && claudeWired && !localOnly && (installed || runtime || !fromPackage)) {
@@ -405,12 +410,14 @@ if (push.status === 0) {
   // request on a push. Said here, because the natural thing is to look at a pull
   // request that already exists and wonder where the record is.
   const pr = prForBranch(repo);
-  if (pr.state === 'open') {
-    console.log(`  ${ok('·')} the record is added to #${pr.number} on your next push ${dim('— sessions from now on')}`);
+  if (postingOff(repo)) {
+    console.log(`  ${ok('·')} the record is built on push but not posted ${dim('— nearly --post puts it on the pull request')}`);
+  } else if (pr.state === 'open') {
+    console.log(`  ${ok('·')} the record is posted to #${pr.number} on your next push ${dim('— sessions from now on; nearly --no-post stops it')}`);
   } else if (pr.state === 'merged' || pr.state === 'closed') {
-    console.log(`  ${ok('·')} the record is offered on your next push ${dim(`— #${pr.number} for this branch is ${pr.state}, so open a new pull request first`)}`);
+    console.log(`  ${ok('·')} the record is posted on your next push ${dim(`— #${pr.number} for this branch is ${pr.state}, so open a new pull request first`)}`);
   } else {
-    console.log(`  ${ok('·')} the record is offered on your next push ${dim('— sessions from now on, once a pull request is open')}`);
+    console.log(`  ${ok('·')} the record is posted to the pull request when it is opened, and updated on every push ${dim('— nearly --no-post stops it')}`);
   }
 } else {
   // All of it: when a pre-push hook of yours is already there, the lines after

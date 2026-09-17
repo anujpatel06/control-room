@@ -1,5 +1,11 @@
 // What the pre-push hook runs. Builds the branch's session record, shows what
-// it found, and asks whether to hand it to the reviewer.
+// it found, and puts it on the branch's open pull request.
+//
+// It used to ask first, in the terminal. But the push that matters is usually
+// made by the agent — "raise a PR" — and an agent's push has no terminal, so the
+// question was never asked and nothing was ever posted. The reviewer saw an
+// empty pull request on every branch Nearly had recorded. Now it posts, as one
+// comment that each push updates; `nearly --no-post` stops it for a repo.
 //
 //   node scripts/push-record.mjs <repo-path>
 //
@@ -9,7 +15,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import { paths } from '../server/paths.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -121,21 +126,10 @@ if (pr.state !== 'open') {
   console.log('');
   process.exit(0);
 }
-const prUrl = pr.url || null;
 
-if (process.env.NEARLY_NO_TTY === '1' || !process.stdin.isTTY) {
-  console.log(dim('  No terminal to ask on, so nothing was posted.'));
-  console.log(dim(`  Post it yourself: node scripts/post-recap.mjs ${slug}${URL_BASE ? ` --url-base ${URL_BASE}` : ''}`));
-  console.log('');
-  process.exit(0);
-}
-
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-const answer = await new Promise((r) => rl.question(`  Post this record to ${prUrl || 'the pull request'}? [y/N] `, r))
-  .finally(() => rl.close());
-
-if (!/^y(es)?$/i.test(String(answer).trim())) {
-  console.log(dim('  Not posted. Push continues.'));
+const { postingOff } = await import('./posting.mjs');
+if (postingOff(repo)) {
+  console.log(dim(`  Not posted: posting is off for this repo. \`nearly --post\` turns it back on.`));
   console.log('');
   process.exit(0);
 }
@@ -144,7 +138,7 @@ const postArgs = [join(root, 'scripts', 'post-recap.mjs'), slug];
 if (URL_BASE) postArgs.push('--url-base', URL_BASE);
 const post = spawnSync(process.execPath, postArgs, { cwd: root, encoding: 'utf8', timeout: 60_000 });
 console.log(post.status === 0
-  ? `  Posted. ${(post.stdout || '').trim()}`
+  ? `  Record ${(post.stdout || '').trim()} ${dim('(nearly --no-post stops this)')}`
   : red(`  Could not post: ${(post.stderr || post.stdout || '').trim().split('\n').pop()}`));
 console.log('');
 process.exit(0);
